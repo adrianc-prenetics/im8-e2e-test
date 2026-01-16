@@ -103,29 +103,36 @@ describe('Checkout Flow - Critical User Interactions', () => {
         cy.visitProduct(products.testProduct.handle);
         cy.waitForPageLoad();
         
-        // Step 2: Add to cart
-        cy.get('.product-form__submit, button[name="add"]')
+        // Step 2: Scroll to main ATC button (avoid sticky bar coverage)
+        cy.get('.product-form, .product__info-wrapper, .product__info-container').first()
+          .scrollIntoView({ offset: { top: -200, left: 0 } });
+        cy.wait(500);
+        
+        // Step 3: Add to cart
+        cy.get('.product-form__submit, button[name="add"]').first()
           .should('be.visible')
           .and('not.be.disabled')
           .click();
         
         cy.wait(2000);
         
-        // Step 3: Open cart drawer
+        // Step 4: Scroll to top and open cart drawer
+        cy.scrollTo('top');
+        cy.wait(300);
         cy.get('#cart-icon-bubble').click();
         cy.get('#CartDrawer').should('be.visible');
         
-        // Step 4: Verify item in cart
+        // Step 5: Verify item in cart
         cy.get('.cart-item')
           .should('have.length.at.least', 1);
         
-        // Step 5: Click checkout
+        // Step 6: Click checkout
         cy.get('button[name="checkout"]')
           .should('be.visible')
           .and('not.be.disabled')
           .click();
         
-        // Step 6: Verify at checkout
+        // Step 7: Verify at checkout
         cy.url({ timeout: 30000 })
           .should('include', 'checkout');
       });

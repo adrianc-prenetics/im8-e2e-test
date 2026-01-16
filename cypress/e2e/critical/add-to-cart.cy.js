@@ -5,6 +5,9 @@
  * Tests that the add to cart functionality is fully FUNCTIONAL for conversions
  * 
  * CRITICAL: Users must be able to add products to cart to make purchases
+ * 
+ * NOTE: This product page has a sticky ATC bar at the bottom that can cover
+ * the main ATC button. Tests scroll to the button to ensure visibility.
  */
 
 describe('Add to Cart - Critical User Interactions', () => {
@@ -15,15 +18,31 @@ describe('Add to Cart - Critical User Interactions', () => {
     });
   });
 
+  // Helper to get the main ATC button (not the sticky one)
+  const getMainAtcButton = () => {
+    return cy.get('.product-form__submit, button[name="add"]').first();
+  };
+
+  // Helper to scroll to and interact with the main ATC button
+  const scrollToMainAtcButton = () => {
+    // Scroll to the product form area to ensure the main ATC button is visible
+    // and not covered by the sticky ATC bar
+    cy.get('.product-form, .product__info-wrapper, .product__info-container').first()
+      .scrollIntoView({ offset: { top: -200, left: 0 } });
+    cy.wait(500);
+  };
+
   describe('Add to Cart Button Functionality', () => {
     it('should have VISIBLE and ENABLED add to cart button', () => {
-      cy.get('.product-form__submit, button[name="add"]')
+      scrollToMainAtcButton();
+      getMainAtcButton()
         .should('be.visible')
         .and('not.be.disabled');
     });
 
     it('should be CLICKABLE - not blocked by overlays', () => {
-      cy.get('.product-form__submit, button[name="add"]')
+      scrollToMainAtcButton();
+      getMainAtcButton()
         .should('be.visible')
         .and('not.be.disabled')
         .click();
@@ -34,18 +53,21 @@ describe('Add to Cart - Critical User Interactions', () => {
     });
 
     it('should show LOADING state when clicked', () => {
-      cy.get('.product-form__submit, button[name="add"]')
+      scrollToMainAtcButton();
+      getMainAtcButton()
         .should('be.visible')
         .click();
       
       // Check for loading state - may be brief
+      // The button may get disabled, show a spinner, or have aria-busy
       cy.get('.loading__spinner, .product-form__submit[aria-busy="true"], .product-form__submit.loading, .product-form__submit[disabled]')
         .should('exist');
     });
 
     it('should UPDATE cart count after adding product', () => {
       cy.getCartCount().then((initialCount) => {
-        cy.get('.product-form__submit, button[name="add"]')
+        scrollToMainAtcButton();
+        getMainAtcButton()
           .should('be.visible')
           .and('not.be.disabled')
           .click();
@@ -65,7 +87,8 @@ describe('Add to Cart - Critical User Interactions', () => {
     });
 
     it('should OPEN cart drawer OR show notification after adding', () => {
-      cy.get('.product-form__submit, button[name="add"]')
+      scrollToMainAtcButton();
+      getMainAtcButton()
         .click();
       
       cy.wait(2000);
@@ -88,7 +111,8 @@ describe('Add to Cart - Critical User Interactions', () => {
         cy.waitForPageLoad();
         
         // Add to cart
-        cy.get('.product-form__submit, button[name="add"]')
+        scrollToMainAtcButton();
+        getMainAtcButton()
           .should('be.visible')
           .click();
         
@@ -110,15 +134,17 @@ describe('Add to Cart - Critical User Interactions', () => {
     it('should INCREMENT cart count with each add', () => {
       cy.getCartCount().then((initialCount) => {
         // First add
-        cy.get('.product-form__submit, button[name="add"]')
+        scrollToMainAtcButton();
+        getMainAtcButton()
           .click();
         cy.wait(2000);
         
         cy.getCartCount().then((afterFirstAdd) => {
           expect(afterFirstAdd).to.be.gt(initialCount);
           
-          // Second add
-          cy.get('.product-form__submit, button[name="add"]')
+          // Second add - need to scroll again as page may have shifted
+          scrollToMainAtcButton();
+          getMainAtcButton()
             .should('not.be.disabled')
             .click();
           cy.wait(2000);
@@ -141,14 +167,16 @@ describe('Add to Cart - Critical User Interactions', () => {
     });
 
     it('should have VISIBLE and CLICKABLE ATC button on mobile', () => {
-      cy.get('.product-form__submit, button[name="add"]')
+      scrollToMainAtcButton();
+      getMainAtcButton()
         .should('be.visible')
         .and('not.be.disabled');
     });
 
     it('should ADD product to cart on mobile', () => {
       cy.getCartCount().then((initialCount) => {
-        cy.get('.product-form__submit, button[name="add"]')
+        scrollToMainAtcButton();
+        getMainAtcButton()
           .click();
         
         cy.wait(2000);
@@ -159,10 +187,15 @@ describe('Add to Cart - Critical User Interactions', () => {
 
     it('should complete mobile add to cart journey', () => {
       // Add to cart
-      cy.get('.product-form__submit, button[name="add"]')
+      scrollToMainAtcButton();
+      getMainAtcButton()
         .click();
       
       cy.wait(2000);
+      
+      // Scroll to top to see cart icon
+      cy.scrollTo('top');
+      cy.wait(500);
       
       // Verify cart updated
       cy.get('.cart-count-bubble')
@@ -187,19 +220,24 @@ describe('Add to Cart - Critical User Interactions', () => {
         cy.visitProduct(products.testProduct.handle);
         cy.waitForPageLoad();
         
-        // Step 2: Verify ATC button is functional
-        cy.get('.product-form__submit, button[name="add"]')
+        // Step 2: Scroll to and verify ATC button is functional
+        scrollToMainAtcButton();
+        getMainAtcButton()
           .should('be.visible')
           .and('not.be.disabled');
         
         // Step 3: Click ATC
-        cy.get('.product-form__submit, button[name="add"]')
+        getMainAtcButton()
           .click();
         
         // Step 4: Wait for cart update
         cy.wait(2000);
         
-        // Step 5: Verify cart count updated
+        // Step 5: Scroll to top to see cart count
+        cy.scrollTo('top');
+        cy.wait(500);
+        
+        // Step 6: Verify cart count updated
         cy.get('.cart-count-bubble span')
           .first()
           .invoke('text')
@@ -208,21 +246,21 @@ describe('Add to Cart - Critical User Interactions', () => {
             expect(count).to.be.at.least(1);
           });
         
-        // Step 6: Open cart drawer
+        // Step 7: Open cart drawer
         cy.get('#cart-icon-bubble').click();
         cy.get('#CartDrawer').should('be.visible');
         
-        // Step 7: Verify product in cart
+        // Step 8: Verify product in cart
         cy.get('.cart-item')
           .should('have.length.at.least', 1);
         
-        // Step 8: Proceed to checkout
+        // Step 9: Proceed to checkout
         cy.get('button[name="checkout"]')
           .should('be.visible')
           .and('not.be.disabled')
           .click();
         
-        // Step 9: Verify arrived at checkout
+        // Step 10: Verify arrived at checkout
         cy.url({ timeout: 30000 })
           .should('include', 'checkout');
       });

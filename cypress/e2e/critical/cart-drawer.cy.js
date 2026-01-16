@@ -292,34 +292,39 @@ describe('Cart Drawer - Critical User Interactions', () => {
         cy.visitProduct(products.testProduct.handle);
         cy.waitForPageLoad();
         
-        // Step 2: Add to cart
-        cy.get('.product-form__submit, button[name="add"]')
+        // Step 2: Scroll to main ATC button (avoid sticky bar coverage)
+        cy.get('.product-form, .product__info-wrapper, .product__info-container').first()
+          .scrollIntoView({ offset: { top: -200, left: 0 } });
+        cy.wait(500);
+        
+        // Step 3: Add to cart
+        cy.get('.product-form__submit, button[name="add"]').first()
           .should('be.visible')
           .and('not.be.disabled')
           .click();
         
         cy.wait(2000);
         
-        // Step 3: Go to homepage and open cart drawer
+        // Step 4: Go to homepage and open cart drawer
         cy.visit('/');
         cy.get('#cart-icon-bubble')
           .should('be.visible')
           .click();
         
-        // Step 4: Verify cart drawer opened with items
+        // Step 5: Verify cart drawer opened with items
         cy.get('#CartDrawer')
           .should('be.visible');
         
         cy.get('.cart-item')
           .should('have.length.at.least', 1);
         
-        // Step 5: Click checkout
+        // Step 6: Click checkout
         cy.get('button[name="checkout"]')
           .should('be.visible')
           .and('not.be.disabled')
           .click();
         
-        // Step 6: Verify arrived at checkout
+        // Step 7: Verify arrived at checkout
         cy.url({ timeout: 30000 })
           .should('include', 'checkout');
       });

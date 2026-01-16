@@ -172,17 +172,28 @@ Cypress.Commands.add('updateCartQuantity', (quantity) => {
 
 /**
  * Add product to cart from product page
+ * Scrolls to the main ATC button to avoid sticky bar coverage
  */
 Cypress.Commands.add('addToCart', () => {
+  // Scroll to product form area to ensure main ATC button is visible
+  // (not covered by sticky ATC bar)
+  cy.get('body').then(($body) => {
+    if ($body.find('.product-form, .product__info-wrapper, .product__info-container').length > 0) {
+      cy.get('.product-form, .product__info-wrapper, .product__info-container').first()
+        .scrollIntoView({ offset: { top: -200, left: 0 } });
+      cy.wait(500);
+    }
+  });
+  
   // Try multiple selectors for the add to cart button
   cy.get('body').then(($body) => {
     if ($body.find('.product-form__submit').length > 0) {
-      cy.get('.product-form__submit')
+      cy.get('.product-form__submit').first()
         .should('be.visible')
         .should('not.be.disabled')
         .click();
     } else if ($body.find('button[name="add"]').length > 0) {
-      cy.get('button[name="add"]')
+      cy.get('button[name="add"]').first()
         .should('be.visible')
         .should('not.be.disabled')
         .click();
@@ -210,6 +221,15 @@ Cypress.Commands.add('visitProduct', (handle) => {
   cy.visit(`/products/${handle}`);
   cy.get('.product-form__submit, button[name="add"]')
     .should('exist');
+});
+
+/**
+ * Scroll to main ATC button (avoiding sticky ATC bar coverage)
+ */
+Cypress.Commands.add('scrollToMainAtcButton', () => {
+  cy.get('.product-form, .product__info-wrapper, .product__info-container').first()
+    .scrollIntoView({ offset: { top: -200, left: 0 } });
+  cy.wait(500);
 });
 
 // ==========================================
