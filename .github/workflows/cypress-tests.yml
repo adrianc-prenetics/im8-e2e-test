@@ -29,7 +29,6 @@ jobs:
         uses: cypress-io/github-action@v6
         with:
           browser: chrome
-          headless: true
         env:
           CYPRESS_BASE_URL: https://im8health.com
 

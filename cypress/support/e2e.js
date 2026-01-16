@@ -1,10 +1,10 @@
 // Global E2E support file
 import './commands';
 
-// Ignore ALL uncaught exceptions from the app - we're testing UI, not their JS
+// Ignore ALL uncaught exceptions from the app
 Cypress.on('uncaught:exception', () => false);
 
-// Log test names
-beforeEach(function() {
-  cy.log(`Running: ${this.currentTest.title}`);
+// Before each test, try to dismiss popups
+beforeEach(() => {
+  // Will be called after cy.visit in tests
 });
