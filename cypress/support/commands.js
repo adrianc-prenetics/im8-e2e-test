@@ -4,7 +4,6 @@
 Cypress.Commands.add('killPopups', () => {
   cy.window().then((win) => {
     try {
-      // Hide popups using native selectors only
       const popupSelectors = [
         '[role="dialog"]',
         '[aria-modal="true"]',
@@ -20,20 +19,17 @@ Cypress.Commands.add('killPopups', () => {
             el.style.display = 'none';
             el.style.visibility = 'hidden';
           });
-          if (elements.length > 0) {
-            console.log(`[IM8-TEST] Hidden ${elements.length} elements matching: ${selector}`);
-          }
         } catch (e) {
           // Ignore selector errors
         }
       });
     } catch (e) {
-      console.log('[IM8-TEST] killPopups error:', e.message);
+      // Ignore errors
     }
   });
 });
 
-// Fast page load - simplified, no jQuery selectors
+// Fast page load - simplified
 Cypress.Commands.add('fastVisit', (url) => {
   cy.log(`[IM8-TEST] Visiting: ${url}`);
   
@@ -41,7 +37,6 @@ Cypress.Commands.add('fastVisit', (url) => {
   
   // Wait for body to exist
   cy.get('body', { timeout: 30000 }).should('exist');
-  cy.log('[IM8-TEST] Body exists');
   
   // Wait for page to stabilize
   cy.wait(1500);
@@ -49,15 +44,18 @@ Cypress.Commands.add('fastVisit', (url) => {
   // Kill popups
   cy.killPopups();
   
-  // Accept cookie consent using Cypress jQuery selector (not native)
+  // Accept cookie consent - use Cypress .contains() which is the proper way
   cy.get('body').then($body => {
-    // Use jQuery filter to find accept button
-    const acceptBtn = $body.find('button').filter(function() {
-      return $(this).text().toLowerCase().includes('accept');
-    });
-    if (acceptBtn.length > 0) {
-      cy.wrap(acceptBtn.first()).click({ force: true });
-      cy.log('[IM8-TEST] Clicked cookie accept');
+    if ($body.find('button').length > 0) {
+      // Use Cypress contains to find and click accept button
+      cy.get('button').then($buttons => {
+        const acceptBtn = $buttons.filter((i, el) => {
+          return el.textContent.toLowerCase().includes('accept');
+        });
+        if (acceptBtn.length > 0) {
+          cy.wrap(acceptBtn.first()).click({ force: true });
+        }
+      });
     }
   });
 });
@@ -75,21 +73,14 @@ Cypress.Commands.add('forceAddToCart', () => {
     'product-form button[type="submit"]'
   ];
   
-  // Try each selector
   cy.get('body').then($body => {
     for (const selector of selectors) {
-      const count = $body.find(selector).length;
-      console.log(`[IM8-TEST] Selector "${selector}" found: ${count}`);
-      
-      if (count > 0) {
+      if ($body.find(selector).length > 0) {
         cy.get(selector).first().scrollIntoView().click({ force: true });
-        cy.log('[IM8-TEST] ATC click completed');
         return;
       }
     }
-    
-    // Fallback - try first selector anyway
-    cy.log('[IM8-TEST] No ATC found, trying first selector');
+    // Fallback
     cy.get(selectors[0], { timeout: 10000 }).first().click({ force: true });
   });
 });
@@ -107,17 +98,11 @@ Cypress.Commands.add('openCart', () => {
   
   cy.get('body').then($body => {
     for (const selector of selectors) {
-      const count = $body.find(selector).length;
-      console.log(`[IM8-TEST] Cart selector "${selector}" found: ${count}`);
-      
-      if (count > 0) {
+      if ($body.find(selector).length > 0) {
         cy.get(selector).first().click({ force: true });
-        cy.log('[IM8-TEST] Cart click completed');
         return;
       }
     }
-    
-    cy.log('[IM8-TEST] No cart icon found, trying first selector');
     cy.get(selectors[0], { timeout: 10000 }).first().click({ force: true });
   });
 });
