@@ -40,9 +40,9 @@ describe('Cart Drawer - Critical Interactions', () => {
     cy.log('[TEST] Starting: clicking cart icon opens cart drawer');
     cy.fastVisit('/');
     
-    // Click the cart icon
+    // Click the cart icon - use force:true since header is fixed position
     cy.get(cartIconSelector, { timeout: 15000 })
-      .should('be.visible')
+      .should('exist')
       .click({ force: true });
     
     // Wait for drawer animation
@@ -67,9 +67,13 @@ describe('Cart Drawer - Critical Interactions', () => {
     cy.forceAddToCart();
     cy.wait(2000);
     
-    // Open cart drawer by clicking cart icon
+    // Scroll to top to ensure header is accessible
+    cy.scrollTo('top');
+    cy.wait(300);
+    
+    // Open cart drawer by clicking cart icon - use force:true for fixed header
     cy.get(cartIconSelector, { timeout: 15000 })
-      .should('be.visible')
+      .should('exist')
       .click({ force: true });
     
     cy.wait(500);

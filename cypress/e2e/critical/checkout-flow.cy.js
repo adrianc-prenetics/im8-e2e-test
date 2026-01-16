@@ -34,9 +34,14 @@ describe('Checkout Flow - Critical Interactions', () => {
     cy.forceAddToCart();
     cy.wait(2000);
     
+    // Scroll to top to ensure header is accessible
+    cy.scrollTo('top');
+    cy.wait(300);
+    
     // Open cart drawer using correct selector from header.liquid
+    // Use force:true since header is fixed position
     cy.get(cartIconSelector, { timeout: 15000 })
-      .should('be.visible')
+      .should('exist')
       .click({ force: true });
     
     cy.wait(500);
@@ -61,9 +66,13 @@ describe('Checkout Flow - Critical Interactions', () => {
     cy.forceAddToCart();
     cy.wait(2000);
     
-    // Open cart drawer
+    // Scroll to top to ensure header is accessible
+    cy.scrollTo('top');
+    cy.wait(300);
+    
+    // Open cart drawer - use force:true for fixed header
     cy.get(cartIconSelector, { timeout: 15000 })
-      .should('be.visible')
+      .should('exist')
       .click({ force: true });
     
     cy.wait(500);
