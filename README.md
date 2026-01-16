@@ -10,6 +10,7 @@ This automated testing suite continuously monitors the IM8 Health storefront (im
 
 | Trigger | Frequency |
 |---------|-----------|
+| **Scheduled** | Every 4 hours (6 runs/day) |
 | **Every push to main** | Automatically on each deployment |
 | **Every pull request** | Before code is merged |
 | **Manual trigger** | On-demand via GitHub Actions |
