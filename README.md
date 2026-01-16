@@ -1,286 +1,166 @@
-# im8 Store E2E Tests
+# IM8 Health E2E Testing Suite
 
-Cypress E2E testing suite for [im8health.com](https://im8health.com).
+## Executive Summary for Danny
 
-## Project Description
+This automated testing suite continuously monitors the IM8 Health storefront (im8health.com) to ensure critical customer journeys work correctly. Tests run automatically and will alert the team if any issues are detected.
 
-This project contains end-to-end tests for the im8 Shopify store, covering critical user flows including:
+---
 
-- **Mobile Navigation** - Hamburger menu, drawer functionality, menu items
-- **Cart Drawer** - Opening/closing, adding items, quantity controls, checkout
-- **Add to Cart** - Product page add to cart functionality
-- **Checkout Flow** - Cart to checkout navigation
-- **Header Navigation** - Desktop menu, mega menus, sticky header
-- **Homepage** - Page load, images, links, responsive design
-- **HB Popup ATC** - Quick-add popup drawer on collection pages
+## 🕐 When Tests Run
 
-## Related Projects
+| Trigger | Frequency |
+|---------|-----------|
+| **Every push to main** | Automatically on each deployment |
+| **Every pull request** | Before code is merged |
+| **Manual trigger** | On-demand via GitHub Actions |
 
-- **Shopify Theme**: `/Users/adrianchan/shopify-im8-ui` - The Shopify theme source code
-  - `snippets/hb-popup.liquid` - HB Popup quick-add component
-  - `snippets/header-mega-menu.liquid` - Desktop mega menu navigation
-  - `snippets/header-drawer.liquid` - Mobile drawer navigation
-  - `sections/` - Theme sections
-  - `assets/` - CSS and JavaScript assets
+Tests complete in **~4-5 minutes** and results are visible at:
+https://github.com/adrianc-prenetics/im8-e2e-test/actions
 
-## Prerequisites
+---
 
-- Node.js 18+ (recommended: 20+)
-- npm or yarn
+## ✅ Customer Journeys & Interactions Tested
 
-## Installation
+### 1. **Homepage Experience** (`homepage.cy.js`)
+- ✓ Homepage loads successfully
+- ✓ Product links are present and accessible
+- ✓ Page renders without errors
 
-```bash
-# Clone the repository
-git clone git@github.com:adrianc-prenetics/im8-e2e-test.git
+### 2. **Add to Cart Flow** (`add-to-cart.cy.js`)
+- ✓ Product page loads with Add to Cart button
+- ✓ Add to Cart button is clickable and functional
+- ✓ Products can be added to cart from product pages
 
-# Navigate to project directory
-cd im8-e2e-test
+### 3. **Cart Drawer Functionality** (`cart-drawer.cy.js`)
+- ✓ Cart icon is visible in header
+- ✓ Clicking cart icon opens the cart drawer
+- ✓ Cart drawer displays checkout button when items are in cart
+- ✓ Items added to cart appear in the drawer
 
-# Install dependencies
-npm install
-```
+### 4. **Checkout Flow** (`checkout-flow.cy.js`)
+- ✓ Can add item to cart from product page
+- ✓ Can open cart drawer after adding items
+- ✓ Checkout button is visible and clickable
+- ✓ Clicking checkout navigates to Shopify checkout page
 
-## Running Tests Locally
+### 5. **Desktop Navigation & Mega Menu** (`header-navigation.cy.js`)
+- ✓ Header with logo is visible
+- ✓ Navigation links are present
+- ✓ "Shop" mega menu opens on click
+- ✓ Mega menu displays product links (Essentials, Longevity, etc.)
 
-### Open Cypress Test Runner (Interactive Mode)
+### 6. **Mobile Navigation** (`mobile-navigation.cy.js`)
+- ✓ Page loads correctly on mobile viewport (375x812)
+- ✓ Hamburger menu button is visible
+- ✓ Clicking hamburger opens mobile drawer menu
+- ✓ Mobile drawer contains navigation links
 
-```bash
-npm run cy:open
-```
+### 7. **Quick Add Popup (HB Popup)** (`hb-popup-atc.cy.js`)
+- ✓ Collection page displays product cards with ATC buttons
+- ✓ Clicking ATC on product card opens quick-add popup
+- ✓ Popup displays product options (Format, Plan selections)
+- ✓ Popup has working Add to Cart button
+- ✓ Can successfully add products to cart from popup
 
-### Run All Tests (Headless)
+### 8. **Sticky Add to Cart Bar** (`sticky-atc-bar.cy.js`)
+- ✓ Product page has ATC functionality after scrolling
+- ✓ ATC button remains accessible throughout page
 
-```bash
-npm run cy:run
-```
+---
 
-### Run Tests by Viewport
+## 📊 Test Coverage Summary
 
-```bash
-# Desktop viewport (1280x720)
-npm run cy:run:desktop
+| Area | Tests | Critical User Actions Covered |
+|------|-------|------------------------------|
+| Homepage | 2 | Page load, product discovery |
+| Add to Cart | 2 | ATC button visibility, click functionality |
+| Cart Drawer | 4 | Open/close drawer, checkout button, item display |
+| Checkout | 3 | Full checkout navigation flow |
+| Desktop Nav | 3 | Header, mega menu, navigation links |
+| Mobile Nav | 4 | Hamburger menu, mobile drawer |
+| Quick Add Popup | 5 | Collection page ATC, popup options |
+| Sticky ATC | 1 | Scroll-based ATC functionality |
+| **TOTAL** | **24** | |
 
-# Mobile viewport (375x812)
-npm run cy:run:mobile
-```
+---
 
-### Run Tests in Headed Mode
+## 🚨 What Happens When Tests Fail
 
-```bash
-npm run cy:run:headed
-```
+1. **GitHub Actions shows failure** - Red X on the commit/PR
+2. **Screenshots captured** - Automatically saved showing the failure state
+3. **Team notified** - Via GitHub notifications
 
-### Run Tests in Specific Browser
+---
 
-```bash
-# Chrome
-npm run cy:run:chrome
+## 🔧 Technical Details
 
-# Firefox
-npm run cy:run:firefox
-```
+### Test Framework
+- **Cypress** - Industry-standard E2E testing framework
+- **Chrome browser** - Tests run in headless Chrome
 
-### Run Critical Tests Only
+### Key Features
+- **Popup handling** - Automatically dismisses Klaviyo marketing popups
+- **Cookie consent** - Handles cookie banners automatically
+- **Force interactions** - Bypasses overlay issues for reliable testing
+- **Mobile & Desktop** - Tests both viewport sizes
 
-```bash
-npm run cy:run:critical
-```
+### Reference Files (from shopify-im8-ui theme)
+- `snippets/cart-drawer.liquid` - Cart drawer structure
+- `sections/header.liquid` - Header and cart icon
+- `snippets/header-mega-menu.liquid` - Desktop navigation
+- `snippets/header-drawer.liquid` - Mobile navigation
+- `snippets/hb-popup.liquid` - Quick add popup
 
-## Project Structure
+---
+
+## 📁 Project Structure
 
 ```
 im8-e2e-test/
 ├── cypress/
-│   ├── e2e/
-│   │   └── critical/
-│   │       ├── mobile-navigation.cy.js
-│   │       ├── cart-drawer.cy.js
-│   │       ├── add-to-cart.cy.js
-│   │       ├── checkout-flow.cy.js
-│   │       ├── header-navigation.cy.js
-│   │       ├── homepage.cy.js
-│   │       └── hb-popup-atc.cy.js
-│   ├── support/
-│   │   ├── commands.js      # Custom Cypress commands
-│   │   └── e2e.js           # Support file configuration
-│   └── fixtures/
-│       └── products.json    # Test data and selectors
-├── .github/
-│   └── workflows/
-│       └── cypress-tests.yml  # GitHub Actions workflow
-├── cypress.config.js        # Cypress configuration
-├── package.json
-├── .gitignore
-└── README.md
+│   ├── e2e/critical/          # All test files
+│   │   ├── add-to-cart.cy.js
+│   │   ├── cart-drawer.cy.js
+│   │   ├── checkout-flow.cy.js
+│   │   ├── hb-popup-atc.cy.js
+│   │   ├── header-navigation.cy.js
+│   │   ├── homepage.cy.js
+│   │   ├── mobile-navigation.cy.js
+│   │   └── sticky-atc-bar.cy.js
+│   └── support/
+│       ├── commands.js        # Custom test helpers
+│       └── e2e.js             # Global configuration
+├── .github/workflows/
+│   └── cypress-tests.yml      # CI/CD configuration
+└── cypress.config.js          # Cypress settings
 ```
 
-## Test Configuration
+---
 
-### Timeouts
+## 🚀 Running Tests Locally
 
-| Setting | Value |
-|---------|-------|
-| Default Command Timeout | 15 seconds |
-| Page Load Timeout | 60 seconds |
-| Request Timeout | 15 seconds |
-| Response Timeout | 30 seconds |
+```bash
+# Install dependencies
+npm install
 
-### Viewports
+# Run tests in headless mode
+npm test
 
-| Device | Width | Height |
-|--------|-------|--------|
-| Desktop | 1280 | 720 |
-| Mobile | 375 | 812 |
-| Tablet | 768 | 1024 |
+# Open Cypress UI for debugging
+npm run cypress:open
+```
 
-### Retries
+---
 
-- **Run Mode (CI)**: 2 retries
-- **Open Mode (Local)**: 0 retries
+## 📈 Future Enhancements (Potential)
 
-## Custom Commands
+- [ ] Add scheduled runs (e.g., every 6 hours)
+- [ ] Slack notifications on failure
+- [ ] Visual regression testing
+- [ ] Performance monitoring
+- [ ] Multi-region testing
 
-The following custom commands are available:
+---
 
-### Viewport Commands
-- `cy.setMobileViewport()` - Set viewport to 375x812
-- `cy.setTabletViewport()` - Set viewport to 768x1024
-- `cy.setDesktopViewport()` - Set viewport to 1280x720
-
-### Mobile Navigation
-- `cy.openMobileNav()` - Open mobile navigation drawer
-- `cy.closeMobileNav()` - Close mobile navigation drawer
-- `cy.clickMobileMenuItem(text)` - Click a menu item by text
-- `cy.expandMobileSubmenu(text)` - Expand a submenu
-
-### Cart
-- `cy.openCartDrawer()` - Open cart drawer
-- `cy.closeCartDrawer()` - Close cart drawer
-- `cy.getCartCount()` - Get current cart count
-- `cy.verifyCartEmpty()` - Verify cart is empty
-- `cy.clearCart()` - Clear all items from cart
-- `cy.updateCartQuantity(qty)` - Update item quantity
-
-### Add to Cart
-- `cy.addToCart()` - Add product to cart
-- `cy.addToCartAndVerify()` - Add product and verify cart updated
-- `cy.visitProduct(handle)` - Visit a product page
-
-### HB Popup
-- `cy.openHbPopup(index)` - Open HB popup for product at index
-- `cy.closeHbPopup()` - Close HB popup
-- `cy.addToCartFromHbPopup()` - Add to cart from popup
-- `cy.selectHbPopupVariant(index)` - Select variant in popup
-- `cy.updateHbPopupQuantity(qty)` - Update quantity in popup
-
-### Header
-- `cy.clickLogo()` - Click logo to go home
-- `cy.hoverMegaMenu(text)` - Hover over mega menu item
-- `cy.clickDesktopMenuItem(text)` - Click desktop menu item
-
-### Checkout
-- `cy.proceedToCheckoutFromDrawer()` - Checkout from cart drawer
-- `cy.proceedToCheckoutFromCart()` - Checkout from cart page
-
-### Utilities
-- `cy.waitForPageLoad()` - Wait for page to fully load
-- `cy.checkBrokenImages()` - Check for broken images
-- `cy.checkInternalLinks()` - Verify internal links
-- `cy.scrollToAndVerify(selector)` - Scroll to element
-- `cy.takeNamedScreenshot(name)` - Take named screenshot
-
-## GitHub Actions
-
-### Triggers
-
-The workflow runs on:
-- **Push** to `main`, `master`, or `develop` branches
-- **Pull requests** to `main`, `master`, or `develop` branches
-- **Schedule** - Daily at 6 AM UTC
-- **Manual trigger** - Via workflow_dispatch
-
-### Test Matrix
-
-Tests run on both viewports in parallel:
-- Desktop (1280x720)
-- Mobile (375x812)
-
-### Artifacts
-
-On test failure, the following artifacts are uploaded:
-- Screenshots (`cypress/screenshots/`)
-- Videos (`cypress/videos/`)
-
-Artifacts are retained for 7 days.
-
-## Setting Up Slack Notifications
-
-### 1. Create a Slack Webhook
-
-1. Go to [Slack API](https://api.slack.com/apps)
-2. Create a new app or select existing app
-3. Enable "Incoming Webhooks"
-4. Add a new webhook to your workspace
-5. Select the channel for notifications
-6. Copy the webhook URL
-
-### 2. Add GitHub Secret
-
-1. Go to your repository on GitHub
-2. Navigate to **Settings** → **Secrets and variables** → **Actions**
-3. Click **New repository secret**
-4. Name: `SLACK_WEBHOOK_URL`
-5. Value: Your Slack webhook URL
-6. Click **Add secret**
-
-### Notification Events
-
-- **Failure notifications** - Sent when tests fail (not on PRs)
-- **Success notifications** - Sent only for scheduled runs when all tests pass
-
-## GitHub Secrets Required
-
-| Secret | Description | Required |
-|--------|-------------|----------|
-| `SLACK_WEBHOOK_URL` | Slack incoming webhook URL for notifications | Optional (notifications won't work without it) |
-
-## Test Schedule
-
-| Event | Schedule |
-|-------|----------|
-| Daily Run | 6:00 AM UTC |
-| Push to main/master/develop | On push |
-| Pull Requests | On PR creation/update |
-
-## Troubleshooting
-
-### Tests failing due to third-party scripts
-
-The test suite is configured to ignore errors from common third-party scripts:
-- Google Analytics (gtag)
-- Facebook Pixel (fbq)
-- Klaviyo
-- Skio
-
-### Flaky tests
-
-Tests are configured to retry 2 times in CI mode. If tests are still flaky:
-1. Increase timeouts in `cypress.config.js`
-2. Add explicit waits where needed
-3. Check for race conditions in the application
-
-### Cart state issues
-
-Use `cy.clearCart()` in `before()` hooks to ensure clean cart state.
-
-## Contributing
-
-1. Create a feature branch
-2. Make your changes
-3. Run tests locally to verify
-4. Submit a pull request
-
-## License
-
-MIT
+**Last Updated:** January 2026  
+**Maintained by:** Adrian Chan
