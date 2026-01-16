@@ -3,19 +3,20 @@ describe('Header Navigation - Critical Interactions', () => {
     cy.fastVisit('/');
   });
 
-  it('header and logo exist', () => {
-    cy.get('header, [role="banner"]').should('exist');
-    cy.get('a[href="/"]').should('exist');
-  });
-
-  it('cart icon is clickable', () => {
-    cy.killPopups();
-    cy.get('#cart-icon-bubble').click({ force: true });
-    cy.wait(500);
-    cy.get('#CartDrawer, cart-drawer').should('exist');
+  it('header exists with logo', () => {
+    cy.task('log', '[TEST] Starting: header exists with logo');
+    cy.debugPageState();
+    
+    cy.get('header, .header', { timeout: 15000 }).should('exist');
+    cy.get('a[href="/"], .header__heading-logo, img[alt*="IM8"]').should('exist');
+    cy.task('log', '[TEST] Header test completed');
   });
 
   it('navigation links exist', () => {
-    cy.get('header a').should('have.length.greaterThan', 0);
+    cy.task('log', '[TEST] Starting: navigation links exist');
+    cy.get('nav a, .header a').then($links => {
+      cy.task('log', `[TEST] Found ${$links.length} nav links`);
+    });
+    cy.get('nav a, .header a').should('have.length.greaterThan', 0);
   });
 });

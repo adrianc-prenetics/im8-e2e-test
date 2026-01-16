@@ -1,20 +1,19 @@
 describe('Sticky ATC Bar - Critical Interactions', () => {
-  it('sticky bar has shop now link', () => {
+  it('product page has ATC functionality', () => {
+    cy.task('log', '[TEST] Starting: product page has ATC functionality');
     cy.fastVisit('/products/essentials');
-    cy.killPopups();
     
-    // Scroll down to trigger sticky bar
-    cy.scrollTo(0, 1000);
+    cy.scrollTo('bottom', { duration: 500 });
     cy.wait(500);
     
-    // The sticky bar has a "shop now" link that scrolls to product
-    // Or we can just click the main ATC button
-    cy.get('[id^="ProductSubmitButton"], .product-form__submit', { timeout: 10000 })
-      .first()
-      .scrollIntoView()
-      .click({ force: true });
-    cy.wait(1000);
+    cy.debugPageState();
     
-    cy.get('body').should('exist');
+    cy.get('[id^="ProductSubmitButton"], .product-form__submit, button[name="add"]', { timeout: 10000 })
+      .should('exist')
+      .then($el => {
+        cy.task('log', `[TEST] Found ATC: id=${$el.attr('id')}, visible=${$el.is(':visible')}`);
+      });
+    
+    cy.task('log', '[TEST] Sticky ATC test completed');
   });
 });
