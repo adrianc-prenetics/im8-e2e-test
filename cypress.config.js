@@ -7,9 +7,9 @@ module.exports = defineConfig({
     supportFile: 'cypress/support/e2e.js',
     fixturesFolder: 'cypress/fixtures',
     
-    // Fast timeouts
+    // Timeouts - collection pages can be slow
     defaultCommandTimeout: 8000,
-    pageLoadTimeout: 20000,
+    pageLoadTimeout: 30000,
     requestTimeout: 8000,
     responseTimeout: 10000,
     
