@@ -8,8 +8,16 @@
  * - Verify navigation to checkout page
  * 
  * Reference: /Users/adrianchan/shopify-im8-ui/snippets/cart-drawer.liquid
+ * Reference: /Users/adrianchan/shopify-im8-ui/sections/header.liquid (line 307)
+ * 
+ * Cart icon: #cart-icon-bubble
+ * Checkout button: #CartDrawer-Checkout with name="checkout"
  */
 describe('Checkout Flow - Critical Interactions', () => {
+  // Selectors from theme files
+  const cartIconSelector = '#cart-icon-bubble';
+  const checkoutButtonSelector = '#CartDrawer-Checkout, button[name="checkout"].cart__checkout-button';
+  
   it('product page has checkout path', () => {
     cy.log('[TEST] Starting: product page has checkout path');
     cy.fastVisit('/products/essentials');
@@ -26,16 +34,16 @@ describe('Checkout Flow - Critical Interactions', () => {
     cy.forceAddToCart();
     cy.wait(2000);
     
-    // Open cart drawer
-    cy.get('button[aria-label*="Cart"]', { timeout: 15000 })
-      .first()
+    // Open cart drawer using correct selector from header.liquid
+    cy.get(cartIconSelector, { timeout: 15000 })
+      .should('be.visible')
       .click({ force: true });
     
     cy.wait(500);
     
-    // Click checkout button
-    cy.get('button[name="checkout"], a[href*="/checkout"], .cart__checkout-button', { timeout: 10000 })
-      .first()
+    // Click checkout button using correct selector from cart-drawer.liquid
+    cy.get(checkoutButtonSelector, { timeout: 10000 })
+      .should('exist')
       .click({ force: true });
     
     // Verify we're on checkout page or being redirected
@@ -54,14 +62,14 @@ describe('Checkout Flow - Critical Interactions', () => {
     cy.wait(2000);
     
     // Open cart drawer
-    cy.get('button[aria-label*="Cart"]', { timeout: 15000 })
-      .first()
+    cy.get(cartIconSelector, { timeout: 15000 })
+      .should('be.visible')
       .click({ force: true });
     
     cy.wait(500);
     
-    // Verify checkout button exists
-    cy.get('button[name="checkout"], a[href*="/checkout"], .cart__checkout-button, [class*="checkout"]', { timeout: 10000 })
+    // Verify checkout button exists using correct selector
+    cy.get(checkoutButtonSelector, { timeout: 10000 })
       .should('exist')
       .and('be.visible');
     

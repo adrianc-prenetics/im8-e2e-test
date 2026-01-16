@@ -8,17 +8,30 @@
  * - Adding items updates cart
  * 
  * Reference: /Users/adrianchan/shopify-im8-ui/snippets/cart-drawer.liquid
- * The cart drawer uses class "cart-drawer" and has id "CartDrawer"
+ * Reference: /Users/adrianchan/shopify-im8-ui/sections/header.liquid (line 307)
+ * 
+ * Cart icon: #cart-icon-bubble (a tag with class header__icon header__icon--cart)
+ * Cart drawer: cart-drawer custom element with class "cart-drawer drawer"
+ * Cart drawer inner: .drawer__inner with role="dialog" aria-modal="true"
+ * Checkout button: #CartDrawer-Checkout with class cart__checkout-button and name="checkout"
  */
 describe('Cart Drawer - Critical Interactions', () => {
+  // Cart icon selector from header.liquid line 307
+  const cartIconSelector = '#cart-icon-bubble';
+  
+  // Cart drawer selectors from cart-drawer.liquid
+  const cartDrawerSelector = 'cart-drawer.cart-drawer';
+  const cartDrawerInnerSelector = '.drawer__inner[role="dialog"]';
+  const checkoutButtonSelector = '#CartDrawer-Checkout, button[name="checkout"].cart__checkout-button';
+  
   it('cart icon exists on homepage', () => {
     cy.log('[TEST] Starting: cart icon exists on homepage');
     cy.fastVisit('/');
     
-    // Cart icon button - per live site inspection
-    cy.get('button[aria-label*="Cart"], #cart-icon-bubble, a[href="/cart"]', { timeout: 15000 })
-      .first()
-      .should('exist');
+    // Cart icon - per header.liquid line 307: id="cart-icon-bubble"
+    cy.get(cartIconSelector, { timeout: 15000 })
+      .should('exist')
+      .and('be.visible');
     
     cy.log('[TEST] Cart icon found');
   });
@@ -27,17 +40,20 @@ describe('Cart Drawer - Critical Interactions', () => {
     cy.log('[TEST] Starting: clicking cart icon opens cart drawer');
     cy.fastVisit('/');
     
-    // Click the cart icon button
-    cy.get('button[aria-label*="Cart"]', { timeout: 15000 })
-      .first()
+    // Click the cart icon
+    cy.get(cartIconSelector, { timeout: 15000 })
+      .should('be.visible')
       .click({ force: true });
     
-    // Wait for drawer to open - cart drawer has role="dialog" and aria-modal="true"
+    // Wait for drawer animation
     cy.wait(500);
     
     // Verify cart drawer is visible
-    // Reference: cart-drawer.liquid line 74-75: role="dialog" aria-modal="true"
-    cy.get('.cart-drawer .drawer__inner, #CartDrawer .drawer__inner, cart-drawer', { timeout: 10000 })
+    // Reference: cart-drawer.liquid line 69-77
+    cy.get(cartDrawerSelector, { timeout: 10000 })
+      .should('exist');
+    
+    cy.get(cartDrawerInnerSelector, { timeout: 10000 })
       .should('exist');
     
     cy.log('[TEST] Cart drawer opened');
@@ -52,15 +68,15 @@ describe('Cart Drawer - Critical Interactions', () => {
     cy.wait(2000);
     
     // Open cart drawer by clicking cart icon
-    cy.get('button[aria-label*="Cart"]', { timeout: 15000 })
-      .first()
+    cy.get(cartIconSelector, { timeout: 15000 })
+      .should('be.visible')
       .click({ force: true });
     
     cy.wait(500);
     
     // Verify checkout button exists in cart drawer
-    // Common selectors for checkout button
-    cy.get('button[name="checkout"], a[href*="/checkout"], .cart__checkout-button, [class*="checkout"]', { timeout: 10000 })
+    // Reference: cart-drawer.liquid line 1745-1754
+    cy.get(checkoutButtonSelector, { timeout: 10000 })
       .should('exist');
     
     cy.log('[TEST] Checkout button found in cart drawer');
