@@ -14,6 +14,8 @@
  * Cart drawer: cart-drawer custom element with class "cart-drawer drawer"
  * Cart drawer inner: .drawer__inner with role="dialog" aria-modal="true"
  * Checkout button: #CartDrawer-Checkout with class cart__checkout-button and name="checkout"
+ * 
+ * NOTE: Tests use .should('be.visible') to catch CSS bugs that hide elements
  */
 describe('Cart Drawer - Critical Interactions', () => {
   // Cart icon selector from header.liquid line 307
@@ -24,49 +26,47 @@ describe('Cart Drawer - Critical Interactions', () => {
   const cartDrawerInnerSelector = '.drawer__inner[role="dialog"]';
   const checkoutButtonSelector = '#CartDrawer-Checkout, button[name="checkout"].cart__checkout-button';
   
-  it('cart icon exists on homepage', () => {
-    cy.log('[TEST] Starting: cart icon exists on homepage');
+  it('cart icon is visible on homepage', () => {
+    cy.log('[TEST] Starting: cart icon is visible on homepage');
     cy.fastVisit('/');
     
-    // Kill popups again to ensure body is visible (Klaviyo may have re-triggered)
+    // Kill popups to ensure body is visible (handles Klaviyo)
     cy.killPopups();
     
-    // Cart icon - per header.liquid line 307: id="cart-icon-bubble"
-    // Just check existence, visibility may be affected by Klaviyo popup timing
+    // Cart icon MUST be visible to users - this will catch CSS bugs
     cy.get(cartIconSelector, { timeout: 15000 })
-      .should('exist');
+      .should('be.visible');
     
-    cy.log('[TEST] Cart icon found');
+    cy.log('[TEST] Cart icon is visible');
   });
 
-  it('clicking cart icon opens cart drawer', () => {
-    cy.log('[TEST] Starting: clicking cart icon opens cart drawer');
+  it('clicking cart icon opens visible cart drawer', () => {
+    cy.log('[TEST] Starting: clicking cart icon opens visible cart drawer');
     cy.fastVisit('/');
     
     // Kill popups to ensure body is visible
     cy.killPopups();
     
-    // Click the cart icon - use force:true since header is fixed position
+    // Cart icon must be visible before clicking
     cy.get(cartIconSelector, { timeout: 15000 })
-      .should('exist')
-      .click({ force: true });
+      .should('be.visible')
+      .click();
     
     // Wait for drawer animation
     cy.wait(500);
     
-    // Verify cart drawer is visible
-    // Reference: cart-drawer.liquid line 69-77
+    // Cart drawer MUST be visible after clicking - this catches hidden drawer bugs
     cy.get(cartDrawerSelector, { timeout: 10000 })
       .should('exist');
     
     cy.get(cartDrawerInnerSelector, { timeout: 10000 })
-      .should('exist');
+      .should('be.visible');
     
-    cy.log('[TEST] Cart drawer opened');
+    cy.log('[TEST] Cart drawer opened and visible');
   });
 
-  it('cart drawer has checkout button when items in cart', () => {
-    cy.log('[TEST] Starting: cart drawer has checkout button');
+  it('cart drawer shows visible checkout button when items in cart', () => {
+    cy.log('[TEST] Starting: cart drawer has visible checkout button');
     
     // First add an item to cart
     cy.fastVisit('/products/essentials');
@@ -80,19 +80,18 @@ describe('Cart Drawer - Critical Interactions', () => {
     // Kill popups to ensure body is visible
     cy.killPopups();
     
-    // Open cart drawer by clicking cart icon - use force:true for fixed header
+    // Cart icon must be visible
     cy.get(cartIconSelector, { timeout: 15000 })
-      .should('exist')
-      .click({ force: true });
+      .should('be.visible')
+      .click();
     
     cy.wait(500);
     
-    // Verify checkout button exists in cart drawer
-    // Reference: cart-drawer.liquid line 1745-1754
+    // Checkout button MUST be visible - this catches hidden button bugs
     cy.get(checkoutButtonSelector, { timeout: 10000 })
-      .should('exist');
+      .should('be.visible');
     
-    cy.log('[TEST] Checkout button found in cart drawer');
+    cy.log('[TEST] Checkout button is visible in cart drawer');
   });
 
   it('can add item to cart from product page', () => {

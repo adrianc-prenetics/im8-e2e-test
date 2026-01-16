@@ -12,6 +12,8 @@
  * 
  * Cart icon: #cart-icon-bubble
  * Checkout button: #CartDrawer-Checkout with name="checkout"
+ * 
+ * NOTE: Tests use .should('be.visible') to catch CSS bugs that hide elements
  */
 describe('Checkout Flow - Critical Interactions', () => {
   // Selectors from theme files
@@ -26,7 +28,7 @@ describe('Checkout Flow - Critical Interactions', () => {
     cy.log('[TEST] Checkout flow test completed');
   });
 
-  it('can navigate to checkout from cart drawer', () => {
+  it('can navigate to checkout from visible cart drawer', () => {
     cy.log('[TEST] Starting: can navigate to checkout from cart drawer');
     
     // Add item to cart
@@ -38,18 +40,20 @@ describe('Checkout Flow - Critical Interactions', () => {
     cy.scrollTo('top');
     cy.wait(300);
     
-    // Open cart drawer using correct selector from header.liquid
-    // Use force:true since header is fixed position
+    // Kill popups to ensure body is visible
+    cy.killPopups();
+    
+    // Cart icon must be visible before clicking
     cy.get(cartIconSelector, { timeout: 15000 })
-      .should('exist')
-      .click({ force: true });
+      .should('be.visible')
+      .click();
     
     cy.wait(500);
     
-    // Click checkout button using correct selector from cart-drawer.liquid
+    // Checkout button must be visible before clicking
     cy.get(checkoutButtonSelector, { timeout: 10000 })
-      .should('exist')
-      .click({ force: true });
+      .should('be.visible')
+      .click();
     
     // Verify we're on checkout page or being redirected
     // Note: Checkout may redirect to Shopify checkout domain
@@ -58,8 +62,8 @@ describe('Checkout Flow - Critical Interactions', () => {
     cy.log('[TEST] Successfully navigated to checkout');
   });
 
-  it('checkout button exists in cart drawer', () => {
-    cy.log('[TEST] Starting: checkout button exists in cart drawer');
+  it('checkout button is visible in cart drawer', () => {
+    cy.log('[TEST] Starting: checkout button is visible in cart drawer');
     
     // Add item to cart first
     cy.fastVisit('/products/essentials');
@@ -70,18 +74,20 @@ describe('Checkout Flow - Critical Interactions', () => {
     cy.scrollTo('top');
     cy.wait(300);
     
-    // Open cart drawer - use force:true for fixed header
+    // Kill popups to ensure body is visible
+    cy.killPopups();
+    
+    // Cart icon must be visible
     cy.get(cartIconSelector, { timeout: 15000 })
-      .should('exist')
-      .click({ force: true });
+      .should('be.visible')
+      .click();
     
     cy.wait(500);
     
-    // Verify checkout button exists using correct selector
+    // Checkout button MUST be visible - this catches hidden button bugs
     cy.get(checkoutButtonSelector, { timeout: 10000 })
-      .should('exist')
-      .and('be.visible');
+      .should('be.visible');
     
-    cy.log('[TEST] Checkout button verified');
+    cy.log('[TEST] Checkout button is visible');
   });
 });

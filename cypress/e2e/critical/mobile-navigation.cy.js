@@ -7,74 +7,83 @@
  * - Navigation links in mobile drawer
  * 
  * Reference: /Users/adrianchan/shopify-im8-ui/snippets/header-drawer.liquid
+ * 
+ * NOTE: Tests use .should('be.visible') to catch CSS bugs that hide elements
  */
 describe('Mobile Navigation - Critical Interactions', () => {
   beforeEach(() => {
     cy.viewport(375, 812);
     cy.fastVisit('/');
+    // Kill popups to ensure body is visible (handles Klaviyo)
+    cy.killPopups();
   });
 
   it('page loads on mobile', () => {
     cy.log('[TEST] Starting: page loads on mobile');
-    cy.get('body').should('exist');
+    cy.get('body').should('be.visible');
     cy.log('[TEST] Mobile page load completed');
   });
 
-  it('hamburger menu button exists', () => {
-    cy.log('[TEST] Starting: hamburger menu button exists');
+  it('hamburger menu button is visible', () => {
+    cy.log('[TEST] Starting: hamburger menu button is visible');
     
     // Reference: header-drawer.liquid - summary with class header__icon--menu
+    // Hamburger button MUST be visible on mobile - this catches CSS bugs
     cy.get('button[aria-label*="Menu"], summary.header__icon--menu, [class*="menu"] button, header button', { timeout: 15000 })
       .first()
-      .should('exist')
+      .should('be.visible')
       .then($btn => {
-        cy.log(`[TEST] Found hamburger button: ${$btn.prop('tagName')}`);
+        cy.log(`[TEST] Found visible hamburger button: ${$btn.prop('tagName')}`);
       });
     
-    cy.log('[TEST] Hamburger menu button test completed');
+    cy.log('[TEST] Hamburger menu button is visible');
   });
 
-  it('mobile drawer opens on hamburger click', () => {
-    cy.log('[TEST] Starting: mobile drawer opens on hamburger click');
+  it('mobile drawer opens and is visible on hamburger click', () => {
+    cy.log('[TEST] Starting: mobile drawer opens and is visible');
     
     // Click the hamburger/menu button
     // Reference: header-drawer.liquid - details#Details-menu-drawer-container
     cy.get('button[aria-label*="Menu"], summary.header__icon--menu, [class*="menu"] button, header button', { timeout: 15000 })
       .first()
-      .click({ force: true });
+      .should('be.visible')
+      .click();
     
     // Wait for drawer animation
     cy.wait(500);
     
-    // Verify the drawer is open
+    // Mobile drawer MUST be visible after clicking - this catches hidden drawer bugs
     // Reference: header-drawer.liquid - div#menu-drawer with class menu-drawer
     cy.get('#menu-drawer, .menu-drawer, [class*="drawer"][class*="menu"]', { timeout: 10000 })
-      .should('exist')
+      .should('be.visible')
       .then($drawer => {
-        cy.log(`[TEST] Mobile drawer found: ${$drawer.attr('class')?.substring(0, 50)}`);
+        cy.log(`[TEST] Mobile drawer is visible: ${$drawer.attr('class')?.substring(0, 50)}`);
       });
     
-    cy.log('[TEST] Mobile drawer test completed');
+    cy.log('[TEST] Mobile drawer is visible');
   });
 
-  it('mobile drawer has navigation links', () => {
-    cy.log('[TEST] Starting: mobile drawer has navigation links');
+  it('mobile drawer has visible navigation links', () => {
+    cy.log('[TEST] Starting: mobile drawer has visible navigation links');
     
     // Open the drawer first
     cy.get('button[aria-label*="Menu"], summary.header__icon--menu, [class*="menu"] button, header button', { timeout: 15000 })
       .first()
-      .click({ force: true });
+      .should('be.visible')
+      .click();
     
     cy.wait(500);
     
-    // Verify navigation links exist in the drawer
+    // Navigation links MUST be visible in the drawer - this catches hidden links bugs
     // Reference: header-drawer.liquid - ul.menu-drawer__menu
     cy.get('.menu-drawer a, #menu-drawer a, [class*="drawer"] nav a', { timeout: 10000 })
       .should('have.length.greaterThan', 0)
+      .first()
+      .should('be.visible')
       .then($links => {
-        cy.log(`[TEST] Found ${$links.length} navigation links in mobile drawer`);
+        cy.log(`[TEST] Navigation links are visible in mobile drawer`);
       });
     
-    cy.log('[TEST] Mobile drawer navigation links test completed');
+    cy.log('[TEST] Mobile drawer navigation links are visible');
   });
 });
