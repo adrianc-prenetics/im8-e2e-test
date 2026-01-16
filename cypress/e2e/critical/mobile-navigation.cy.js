@@ -10,19 +10,17 @@ describe('Mobile Navigation - Critical Interactions', () => {
 
   it('hamburger menu opens drawer', () => {
     cy.killPopups();
-    // Look for hamburger/menu button
-    cy.get('header-drawer summary, button[aria-label*="Menu"], [class*="hamburger"], [class*="menu-icon"]')
+    cy.get('header-drawer summary, [class*="menu-icon"], [class*="hamburger"]')
       .first()
       .click({ force: true });
     cy.wait(500);
     
-    // Menu drawer should appear
-    cy.get('#menu-drawer, [class*="menu-drawer"], [class*="mobile-nav"]').should('exist');
+    cy.get('#menu-drawer, [class*="menu-drawer"]').should('exist');
   });
 
   it('cart works on mobile', () => {
     cy.killPopups();
-    cy.get('button[aria-label*="Cart"], #cart-icon-bubble').first().click({ force: true });
+    cy.get('#cart-icon-bubble').click({ force: true });
     cy.wait(500);
     cy.get('#CartDrawer, cart-drawer').should('exist');
   });

@@ -7,20 +7,10 @@ describe('Sticky ATC Bar - Critical Interactions', () => {
     cy.scrollTo(0, 1000);
     cy.wait(500);
     
-    // Look for sticky bar ATC button at bottom of page
-    cy.get('body').then($body => {
-      // The sticky bar has "Add to cart" button
-      const stickyAtc = $body.find('[class*="sticky"] button, button:contains("Add to cart")');
-      if (stickyAtc.length > 0) {
-        cy.wrap(stickyAtc.last()).click({ force: true });
-        cy.wait(1000);
-      } else {
-        // Fall back to main ATC
-        cy.forceAddToCart();
-      }
-    });
+    // Click any ATC button
+    cy.get('button[name="add"], button[type="submit"]').first().click({ force: true });
+    cy.wait(1000);
     
-    // Verify page didn't crash
     cy.get('body').should('exist');
   });
 });

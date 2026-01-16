@@ -3,18 +3,20 @@
 // Remove all popups immediately via JavaScript
 Cypress.Commands.add('killPopups', () => {
   cy.window().then((win) => {
-    // Remove Klaviyo popups
-    win.document.querySelectorAll('[role="dialog"], [aria-modal="true"], [class*="klaviyo"], [class*="popup"], .needsclick').forEach(el => {
+    // Remove Klaviyo popups and dialogs
+    win.document.querySelectorAll('[role="dialog"], [aria-modal="true"]').forEach(el => {
       el.remove();
     });
-    // Remove cookie banner
-    const cookieBtn = win.document.querySelector('button:contains("Accept"), button.accept');
-    if (cookieBtn) cookieBtn.click();
+    // Remove elements with klaviyo or popup in class
+    win.document.querySelectorAll('[class*="klaviyo"], [class*="popup"], .needsclick').forEach(el => {
+      el.remove();
+    });
   });
-  // Also try clicking accept on cookie banner
+  // Click accept on cookie banner using Cypress (jQuery-style)
   cy.get('body').then($body => {
-    if ($body.find('button:contains("Accept")').length) {
-      cy.contains('button', 'Accept').click({ force: true });
+    const acceptBtn = $body.find('button:contains("Accept")');
+    if (acceptBtn.length) {
+      cy.wrap(acceptBtn.first()).click({ force: true });
     }
   });
 });
@@ -23,30 +25,20 @@ Cypress.Commands.add('killPopups', () => {
 Cypress.Commands.add('fastVisit', (url) => {
   cy.visit(url, { failOnStatusCode: false });
   cy.document().its('readyState').should('eq', 'complete');
-  cy.wait(1000); // Let page settle
+  cy.wait(1000);
   cy.killPopups();
 });
 
-// Scroll to product form area (the actual product info section)
-Cypress.Commands.add('scrollToProductForm', () => {
-  // The product form is inside a section with product info
-  cy.get('button[type="submit"][name="add"], .product-form__submit, button:contains("TRANSFORMATION"), button:contains("Add to cart")')
-    .first()
-    .scrollIntoView({ offset: { top: -300, left: 0 } });
-  cy.wait(300);
-});
-
-// Add to cart with force click - using actual button selectors from the site
+// Add to cart with force click
 Cypress.Commands.add('forceAddToCart', () => {
   cy.killPopups();
-  // The main ATC button contains "TRANSFORMATION" or "Add to cart"
-  cy.get('button[type="submit"][name="add"], button:contains("TRANSFORMATION"), button:contains("Add to cart"), #ProductSubmitButton-template--17653238202535__main')
-    .first()
+  // Use Cypress contains which supports jQuery-style selectors
+  cy.get('button[name="add"], button[type="submit"]').first()
     .scrollIntoView({ offset: { top: -300, left: 0 } })
     .click({ force: true });
 });
 
 // Open cart drawer
 Cypress.Commands.add('openCart', () => {
-  cy.get('button[aria-label*="Cart"], #cart-icon-bubble, [href="/cart"]').first().click({ force: true });
+  cy.get('#cart-icon-bubble, [href="/cart"]').first().click({ force: true });
 });
