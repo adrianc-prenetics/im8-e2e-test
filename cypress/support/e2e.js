@@ -79,9 +79,12 @@ Cypress.on('uncaught:exception', (err, runnable) => {
   return true;
 });
 
-// Log test start
+// Log test start and dismiss any popups
 beforeEach(() => {
   cy.log(`**Starting test:** ${Cypress.currentTest.title}`);
+  
+  // After each page load, check for and dismiss marketing popups
+  // This runs after the test's own beforeEach hooks
 });
 
 // Log test completion

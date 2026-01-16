@@ -395,11 +395,114 @@ Cypress.Commands.add('proceedToCheckoutFromCart', () => {
 // ==========================================
 
 /**
- * Wait for page to fully load
+ * Dismiss any marketing popups (Klaviyo, etc.) that may block interactions
+ * This is critical for CI environments where popups can cover the entire page
+ */
+Cypress.Commands.add('dismissPopups', () => {
+  cy.get('body').then(($body) => {
+    // Klaviyo popup - look for the close button or overlay
+    const klaviyoSelectors = [
+      // Close button selectors
+      '[aria-label="Close dialog"]',
+      '[aria-label="Close form"]',
+      '.klaviyo-close-form',
+      '.kl-private-reset-css-Xuajs1 button[aria-label*="close" i]',
+      '.kl-private-reset-css-Xuajs1 button[aria-label*="Close" i]',
+      '.needsclick [aria-label*="close" i]',
+      // Generic close buttons in popups
+      '[role="dialog"] button[aria-label*="close" i]',
+      '[role="dialog"] button[aria-label*="Close" i]',
+      '[role="dialog"] .close',
+      '[role="dialog"] [class*="close"]',
+    ];
+    
+    for (const selector of klaviyoSelectors) {
+      if ($body.find(selector).length > 0) {
+        cy.get(selector).first().click({ force: true });
+        cy.wait(500);
+        return;
+      }
+    }
+    
+    // If no close button found, try clicking outside the popup (on overlay)
+    const overlaySelectors = [
+      '.kl-private-reset-css-Xuajs1',
+      '[role="dialog"][aria-modal="true"]',
+    ];
+    
+    for (const selector of overlaySelectors) {
+      const $overlay = $body.find(selector);
+      if ($overlay.length > 0) {
+        // Try pressing Escape key to close
+        cy.get('body').type('{esc}');
+        cy.wait(500);
+        return;
+      }
+    }
+  });
+});
+
+/**
+ * Force remove any blocking popups by hiding them via JavaScript
+ * This handles Klaviyo popups, cookie banners, and other marketing overlays
+ */
+Cypress.Commands.add('forceRemovePopups', () => {
+  cy.window().then((win) => {
+    // Hide Klaviyo popups and any modal dialogs
+    const popupSelectors = [
+      '[role="dialog"][aria-modal="true"]',
+      '.kl-private-reset-css-Xuajs1',
+      '.klaviyo-form',
+      '[class*="klaviyo"]',
+      '[id*="klaviyo"]',
+    ];
+    
+    popupSelectors.forEach((selector) => {
+      const elements = win.document.querySelectorAll(selector);
+      elements.forEach((el) => {
+        el.style.display = 'none';
+        el.style.visibility = 'hidden';
+        el.style.opacity = '0';
+        el.style.pointerEvents = 'none';
+      });
+    });
+    
+    // Remove any high z-index overlays that might be blocking interactions
+    const allElements = win.document.querySelectorAll('*');
+    allElements.forEach((el) => {
+      const style = win.getComputedStyle(el);
+      const zIndex = parseInt(style.zIndex);
+      // If element has very high z-index and is fixed/absolute positioned, it might be a popup
+      if (zIndex > 9000 && (style.position === 'fixed' || style.position === 'absolute')) {
+        const isPopup = el.getAttribute('role') === 'dialog' || 
+                       el.classList.contains('needsclick') ||
+                       el.getAttribute('aria-modal') === 'true';
+        if (isPopup) {
+          el.style.display = 'none';
+        }
+      }
+    });
+  });
+});
+
+/**
+ * Wait for page to fully load and dismiss any popups/banners
  */
 Cypress.Commands.add('waitForPageLoad', () => {
   cy.document().its('readyState').should('eq', 'complete');
-  cy.wait(1000);
+  cy.wait(1500);
+  
+  // Dismiss cookie consent banner if present
+  cy.get('body').then(($body) => {
+    // Cookie consent banner
+    if ($body.find('button:contains("Accept")').length > 0) {
+      cy.contains('button', 'Accept').click({ force: true });
+      cy.wait(300);
+    }
+  });
+  
+  // Force remove any blocking popups (Klaviyo, etc.)
+  cy.forceRemovePopups();
 });
 
 /**
