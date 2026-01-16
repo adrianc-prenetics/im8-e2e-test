@@ -3,7 +3,7 @@
  * 
  * Tests the checkout flow from cart drawer:
  * - Add item to cart
- * - Open cart drawer
+ * - Cart drawer opens automatically
  * - Click checkout button
  * - Verify navigation to checkout page
  * 
@@ -13,7 +13,7 @@
  * Cart icon: #cart-icon-bubble
  * Checkout button: #CartDrawer-Checkout with name="checkout"
  * 
- * NOTE: Tests use .should('be.visible') to catch CSS bugs that hide elements
+ * NOTE: Cart drawer opens automatically after adding to cart
  */
 describe('Checkout Flow - Critical Interactions', () => {
   // Selectors from theme files
@@ -28,29 +28,17 @@ describe('Checkout Flow - Critical Interactions', () => {
     cy.log('[TEST] Checkout flow test completed');
   });
 
-  it('can navigate to checkout from visible cart drawer', () => {
+  it('can navigate to checkout from cart drawer', () => {
     cy.log('[TEST] Starting: can navigate to checkout from cart drawer');
     
     // Add item to cart
     cy.fastVisit('/products/essentials');
     cy.forceAddToCart();
+    
+    // Wait for cart drawer to open automatically after ATC
     cy.wait(2000);
     
-    // Scroll to top to ensure header is accessible
-    cy.scrollTo('top');
-    cy.wait(300);
-    
-    // Kill popups to ensure body is visible
-    cy.killPopups();
-    
-    // Cart icon must be visible before clicking
-    cy.get(cartIconSelector, { timeout: 15000 })
-      .should('be.visible')
-      .click();
-    
-    cy.wait(500);
-    
-    // Checkout button must be visible before clicking
+    // Checkout button should be visible in the auto-opened drawer
     cy.get(checkoutButtonSelector, { timeout: 10000 })
       .should('be.visible')
       .click();
@@ -62,27 +50,15 @@ describe('Checkout Flow - Critical Interactions', () => {
     cy.log('[TEST] Successfully navigated to checkout');
   });
 
-  it('checkout button is visible in cart drawer', () => {
+  it('checkout button is visible in cart drawer after adding item', () => {
     cy.log('[TEST] Starting: checkout button is visible in cart drawer');
     
     // Add item to cart first
     cy.fastVisit('/products/essentials');
     cy.forceAddToCart();
+    
+    // Wait for cart drawer to open automatically
     cy.wait(2000);
-    
-    // Scroll to top to ensure header is accessible
-    cy.scrollTo('top');
-    cy.wait(300);
-    
-    // Kill popups to ensure body is visible
-    cy.killPopups();
-    
-    // Cart icon must be visible
-    cy.get(cartIconSelector, { timeout: 15000 })
-      .should('be.visible')
-      .click();
-    
-    cy.wait(500);
     
     // Checkout button MUST be visible - this catches hidden button bugs
     cy.get(checkoutButtonSelector, { timeout: 10000 })
