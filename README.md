@@ -1,6 +1,6 @@
 # IM8 Health E2E Testing Suite
 
-## Executive Summary for Danny
+## Executive Summary
 
 This automated testing suite continuously monitors the IM8 Health storefront (im8health.com) to ensure critical customer journeys work correctly. Tests run automatically and will alert the team if any issues are detected.
 
