@@ -1,23 +1,23 @@
 // Minimal, fast custom commands with detailed logging
 
-// Remove all popups via JavaScript
+// Remove all popups via JavaScript - uses console.log to avoid async issues
 Cypress.Commands.add('killPopups', () => {
   cy.window().then((win) => {
     const selectors = '[role="dialog"], [aria-modal="true"], [class*="klaviyo"], [class*="popup"], .needsclick';
     const found = win.document.querySelectorAll(selectors);
-    cy.task('log', `[IM8-TEST] killPopups found ${found.length} elements to remove`);
+    console.log(`[IM8-TEST] killPopups found ${found.length} elements to remove`);
     found.forEach((el, i) => {
       try {
-        cy.task('log', `[IM8-TEST] Removing popup ${i}: ${el.className || el.tagName}`);
+        console.log(`[IM8-TEST] Removing popup ${i}: ${el.className || el.tagName}`);
         el.remove();
       } catch (e) {
-        cy.task('log', `[IM8-TEST] Failed to remove popup ${i}: ${e.message}`);
+        console.log(`[IM8-TEST] Failed to remove popup ${i}: ${e.message}`);
       }
     });
   });
 });
 
-// Debug page state - logs everything, returns nothing
+// Debug page state - logs everything synchronously, returns nothing
 Cypress.Commands.add('debugPageState', () => {
   cy.window().then((win) => {
     const doc = win.document;
@@ -50,36 +50,36 @@ Cypress.Commands.add('debugPageState', () => {
         classes: d.className.substring(0, 100)
       }))
     };
-    // Log the state - don't return it
-    cy.task('log', '[IM8-TEST] PAGE STATE: ' + JSON.stringify(state, null, 2));
+    // Log the state synchronously - don't use cy.task inside .then()
+    console.log('[IM8-TEST] PAGE STATE:', JSON.stringify(state, null, 2));
   });
 });
 
 // Fast page load with debugging
 Cypress.Commands.add('fastVisit', (url) => {
-  cy.task('log', `[IM8-TEST] Visiting: ${url}`);
+  cy.log(`[IM8-TEST] Visiting: ${url}`);
   
   cy.visit(url, { failOnStatusCode: false });
-  cy.task('log', '[IM8-TEST] Visit completed, checking body...');
+  cy.log('[IM8-TEST] Visit completed, checking body...');
   
   cy.get('body', { timeout: 20000 }).should('exist');
-  cy.task('log', '[IM8-TEST] Body exists');
+  cy.log('[IM8-TEST] Body exists');
   
   // Wait for JS to load
   cy.wait(2000);
-  cy.task('log', '[IM8-TEST] Wait completed, debugging page state...');
+  cy.log('[IM8-TEST] Wait completed, debugging page state...');
   
   cy.debugPageState();
   cy.killPopups();
   
   // Debug again after killing popups
-  cy.task('log', '[IM8-TEST] After killPopups:');
+  cy.log('[IM8-TEST] After killPopups');
   cy.debugPageState();
 });
 
 // Add to cart with detailed logging
 Cypress.Commands.add('forceAddToCart', () => {
-  cy.task('log', '[IM8-TEST] forceAddToCart starting...');
+  cy.log('[IM8-TEST] forceAddToCart starting...');
   cy.killPopups();
   
   cy.get('body').then($body => {
@@ -91,11 +91,11 @@ Cypress.Commands.add('forceAddToCart', () => {
       'product-form button[type="submit"]'
     ];
     
-    cy.task('log', '[IM8-TEST] Checking ATC selectors...');
+    console.log('[IM8-TEST] Checking ATC selectors...');
     
     for (const selector of selectors) {
       const count = $body.find(selector).length;
-      cy.task('log', `[IM8-TEST] Selector "${selector}" found: ${count}`);
+      console.log(`[IM8-TEST] Selector "${selector}" found: ${count}`);
       
       if (count > 0) {
         const el = $body.find(selector).first();
@@ -107,15 +107,15 @@ Cypress.Commands.add('forceAddToCart', () => {
           disabled: el.is(':disabled'),
           text: el.text().substring(0, 30)
         };
-        cy.task('log', `[IM8-TEST] Using selector "${selector}": ${JSON.stringify(info)}`);
+        console.log(`[IM8-TEST] Using selector "${selector}": ${JSON.stringify(info)}`);
         
         cy.get(selector).first().scrollIntoView().click({ force: true });
-        cy.task('log', '[IM8-TEST] ATC click completed');
+        cy.log('[IM8-TEST] ATC click completed');
         return;
       }
     }
     
-    cy.task('log', '[IM8-TEST] ERROR: No ATC button found with any selector!');
+    console.log('[IM8-TEST] ERROR: No ATC button found with any selector!');
     // Try anyway with first selector
     cy.get(selectors[0], { timeout: 5000 }).first().click({ force: true });
   });
@@ -123,7 +123,7 @@ Cypress.Commands.add('forceAddToCart', () => {
 
 // Open cart drawer with logging
 Cypress.Commands.add('openCart', () => {
-  cy.task('log', '[IM8-TEST] openCart starting...');
+  cy.log('[IM8-TEST] openCart starting...');
   
   cy.get('body').then($body => {
     const selectors = [
@@ -135,15 +135,15 @@ Cypress.Commands.add('openCart', () => {
     
     for (const selector of selectors) {
       const count = $body.find(selector).length;
-      cy.task('log', `[IM8-TEST] Cart selector "${selector}" found: ${count}`);
+      console.log(`[IM8-TEST] Cart selector "${selector}" found: ${count}`);
       
       if (count > 0) {
         cy.get(selector).first().click({ force: true });
-        cy.task('log', '[IM8-TEST] Cart click completed');
+        cy.log('[IM8-TEST] Cart click completed');
         return;
       }
     }
     
-    cy.task('log', '[IM8-TEST] ERROR: No cart icon found!');
+    console.log('[IM8-TEST] ERROR: No cart icon found!');
   });
 });
