@@ -29,7 +29,7 @@ on:
 
 env:
   # Cypress configuration
-  CYPRESS_BASE_URL: https://im8store.myshopify.com
+  CYPRESS_BASE_URL: https://im8health.com
 
 jobs:
   cypress-desktop:

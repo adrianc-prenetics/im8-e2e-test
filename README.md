@@ -1,6 +1,6 @@
 # im8 Store E2E Tests
 
-Cypress E2E testing suite for [im8store.myshopify.com](https://im8store.myshopify.com).
+Cypress E2E testing suite for [im8health.com](https://im8health.com).
 
 ## Project Description
 

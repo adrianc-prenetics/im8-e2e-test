@@ -16,7 +16,7 @@
  */
 
 describe('Sticky ATC Bar - Critical User Interactions', () => {
-  const productUrl = '/products/im8-daily-ultimate-essentials';
+  const productUrl = '/products/essentials';
 
   beforeEach(() => {
     cy.visit(productUrl);

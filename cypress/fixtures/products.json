@@ -1,8 +1,8 @@
 {
   "testProduct": {
-    "handle": "im8-daily-ultimate-essentials",
-    "url": "/products/im8-daily-ultimate-essentials",
-    "name": "im8 Daily Ultimate Essentials"
+    "handle": "essentials",
+    "url": "/products/essentials",
+    "name": "Daily Ultimate Essentials"
   },
   "collections": {
     "all": "/collections/all",
