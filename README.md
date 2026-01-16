@@ -14,6 +14,15 @@ This project contains end-to-end tests for the im8 Shopify store, covering criti
 - **Homepage** - Page load, images, links, responsive design
 - **HB Popup ATC** - Quick-add popup drawer on collection pages
 
+## Related Projects
+
+- **Shopify Theme**: `/Users/adrianchan/shopify-im8-ui` - The Shopify theme source code
+  - `snippets/hb-popup.liquid` - HB Popup quick-add component
+  - `snippets/header-mega-menu.liquid` - Desktop mega menu navigation
+  - `snippets/header-drawer.liquid` - Mobile drawer navigation
+  - `sections/` - Theme sections
+  - `assets/` - CSS and JavaScript assets
+
 ## Prerequisites
 
 - Node.js 18+ (recommended: 20+)
