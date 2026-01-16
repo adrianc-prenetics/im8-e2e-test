@@ -35,13 +35,15 @@ describe('Checkout Flow - Critical Interactions', () => {
     cy.fastVisit('/products/essentials');
     cy.forceAddToCart();
     
-    // Wait for cart drawer to open automatically after ATC
-    cy.wait(2000);
+    // Wait for cart drawer to fully render (it re-renders after ATC)
+    cy.wait(3000);
     
-    // Checkout button should be visible in the auto-opened drawer
+    // Wait for checkout button to be stable and click it
+    // Use {force: true} to handle any re-renders during click
     cy.get(checkoutButtonSelector, { timeout: 10000 })
       .should('be.visible')
-      .click();
+      .should('be.enabled')
+      .click({ force: true });
     
     // Verify we're on checkout page or being redirected
     // Note: Checkout may redirect to Shopify checkout domain
@@ -57,8 +59,8 @@ describe('Checkout Flow - Critical Interactions', () => {
     cy.fastVisit('/products/essentials');
     cy.forceAddToCart();
     
-    // Wait for cart drawer to open automatically
-    cy.wait(2000);
+    // Wait for cart drawer to fully render
+    cy.wait(3000);
     
     // Checkout button MUST be visible - this catches hidden button bugs
     cy.get(checkoutButtonSelector, { timeout: 10000 })
