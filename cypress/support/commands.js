@@ -4,12 +4,23 @@
 Cypress.Commands.add('killPopups', () => {
   cy.window().then((win) => {
     try {
+      // CRITICAL: Fix body if Klaviyo has hidden it
+      // Klaviyo adds 'klaviyo-prevent-body-scrolling' class which sets display:none
+      const body = win.document.body;
+      if (body) {
+        body.classList.remove('klaviyo-prevent-body-scrolling');
+        body.style.display = '';
+        body.style.overflow = '';
+      }
+      
       const popupSelectors = [
         '[role="dialog"]',
         '[aria-modal="true"]',
         '[class*="klaviyo"]',
         '[class*="popup"]',
-        '.needsclick'
+        '.needsclick',
+        '[class*="modal"]',
+        '.kl-private-reset-css-Xuajs1' // Klaviyo specific class
       ];
       
       popupSelectors.forEach(selector => {
@@ -41,7 +52,7 @@ Cypress.Commands.add('fastVisit', (url) => {
   // Wait for page to stabilize
   cy.wait(1500);
   
-  // Kill popups
+  // Kill popups (this also fixes body if Klaviyo hid it)
   cy.killPopups();
   
   // Accept cookie consent - use Cypress .contains() which is the proper way
@@ -58,6 +69,9 @@ Cypress.Commands.add('fastVisit', (url) => {
       });
     }
   });
+  
+  // Kill popups again after cookie consent in case new ones appeared
+  cy.killPopups();
 });
 
 // Add to cart with force click
@@ -88,10 +102,11 @@ Cypress.Commands.add('forceAddToCart', () => {
 // Open cart drawer
 Cypress.Commands.add('openCart', () => {
   cy.log('[IM8-TEST] openCart starting...');
+  cy.killPopups(); // Ensure body is visible before trying to click
   
   const selectors = [
+    '#cart-icon-bubble', // Primary selector from theme
     'button[aria-label*="Cart"]',
-    '#cart-icon-bubble',
     'a[href="/cart"]',
     '.cart-icon-bubble'
   ];
