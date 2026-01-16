@@ -41,3 +41,14 @@ jobs:
           name: cypress-screenshots
           path: cypress/screenshots
           if-no-files-found: ignore
+
+      - name: Send WhatsApp notification on failure
+        if: failure()
+        run: |
+          curl -s -X POST \
+            "https://7105.api.greenapi.com/waInstance${{ secrets.GREENAPI_ID_INSTANCE }}/sendMessage/${{ secrets.GREENAPI_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "chatId": "${{ secrets.WHATSAPP_PHONE }}@c.us",
+              "message": "❌ IM8 Cypress Tests FAILED!\n\nRepo: ${{ github.repository }}\nBranch: ${{ github.ref_name }}\nCommit: ${{ github.event.head_commit.message || github.sha }}\n\n🔗 View: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }'
