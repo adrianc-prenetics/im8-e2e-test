@@ -1,39 +1,34 @@
 // Minimal, fast custom commands
 
-// Remove all popups immediately via JavaScript
+// Remove all popups via JavaScript - safe version that doesn't fail
 Cypress.Commands.add('killPopups', () => {
   cy.window().then((win) => {
     // Remove Klaviyo popups and dialogs
-    win.document.querySelectorAll('[role="dialog"], [aria-modal="true"]').forEach(el => {
-      el.remove();
+    const selectors = '[role="dialog"], [aria-modal="true"], [class*="klaviyo"], [class*="popup"], .needsclick';
+    win.document.querySelectorAll(selectors).forEach(el => {
+      try { el.remove(); } catch (e) { /* ignore */ }
     });
-    // Remove elements with klaviyo or popup in class
-    win.document.querySelectorAll('[class*="klaviyo"], [class*="popup"], .needsclick').forEach(el => {
-      el.remove();
-    });
-  });
-  // Click accept on cookie banner using Cypress (jQuery-style)
-  cy.get('body').then($body => {
-    const acceptBtn = $body.find('button:contains("Accept")');
-    if (acceptBtn.length) {
-      cy.wrap(acceptBtn.first()).click({ force: true });
+    // Try to click cookie accept button
+    const acceptBtn = win.document.querySelector('button.accept, [class*="accept"]');
+    if (acceptBtn) {
+      try { acceptBtn.click(); } catch (e) { /* ignore */ }
     }
   });
 });
 
-// Fast page load - wait for ready then kill popups
+// Fast page load
 Cypress.Commands.add('fastVisit', (url) => {
   cy.visit(url, { failOnStatusCode: false });
-  cy.document().its('readyState').should('eq', 'complete');
-  cy.wait(1000);
+  cy.get('body', { timeout: 15000 }).should('exist');
+  cy.wait(500);
   cy.killPopups();
 });
 
 // Add to cart with force click
 Cypress.Commands.add('forceAddToCart', () => {
   cy.killPopups();
-  // Use Cypress contains which supports jQuery-style selectors
-  cy.get('button[name="add"], button[type="submit"]').first()
+  cy.get('button[name="add"], button[type="submit"]', { timeout: 10000 })
+    .first()
     .scrollIntoView({ offset: { top: -300, left: 0 } })
     .click({ force: true });
 });
