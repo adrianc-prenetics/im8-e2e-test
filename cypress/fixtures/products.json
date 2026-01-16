@@ -1,0 +1,99 @@
+{
+  "testProduct": {
+    "handle": "im8-daily-ultimate-essentials",
+    "url": "/products/im8-daily-ultimate-essentials",
+    "name": "im8 Daily Ultimate Essentials"
+  },
+  "collections": {
+    "all": "/collections/all",
+    "default": "/collections"
+  },
+  "viewports": {
+    "mobile": {
+      "width": 375,
+      "height": 812
+    },
+    "tablet": {
+      "width": 768,
+      "height": 1024
+    },
+    "desktop": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "selectors": {
+    "mobileNav": {
+      "hamburger": "header-drawer summary.header__icon--menu",
+      "drawer": "#menu-drawer",
+      "drawerInner": ".Header_drawer_inner_new",
+      "menuList": ".menu-drawer__menu.has-submenu",
+      "menuItem": ".menu-drawer__menu-item",
+      "submenu": ".menu-drawer__submenu",
+      "closeButton": ".menu-drawer__close-button",
+      "detailsContainer": "#Details-menu-drawer-container"
+    },
+    "cartDrawer": {
+      "icon": "#cart-icon-bubble",
+      "countBubble": ".cart-count-bubble span",
+      "drawer": "cart-drawer",
+      "drawerInner": "#CartDrawer",
+      "overlay": "#CartDrawer-Overlay",
+      "closeButton": ".drawer__close",
+      "emptyText": ".cart__empty-text",
+      "emptyContent": ".cart-drawer__empty-content",
+      "itemsContainer": "#CartDrawer-CartItems",
+      "itemsTable": ".cart-items",
+      "item": ".cart-item",
+      "quantityInput": "quantity-input",
+      "checkoutButton": "button[name='checkout']"
+    },
+    "productPage": {
+      "submitButton": ".product-form__submit",
+      "addButton": "button[name='add']",
+      "formWrapper": ".Buy_buttons_main_new",
+      "loadingSpinner": ".loading__spinner",
+      "variantInput": ".product-variant-id"
+    },
+    "header": {
+      "wrapper": "sticky-header",
+      "headerWrapper": ".header-wrapper",
+      "logo": ".header__heading-logo",
+      "desktopMenu": ".header__inline-menu",
+      "headerLeft": ".header_left_new",
+      "megaMenu": "header-menu",
+      "megaMenuClass": ".mega-menu",
+      "sectionClass": ".section-header"
+    },
+    "hbPopup": {
+      "container": "[js-hb-popup]",
+      "containerClass": ".hb_popup",
+      "wrapper": ".hb_popup__wraper",
+      "productDetail": "[js-product-detail]",
+      "activeClass": ".hb_popup.active",
+      "closeButton": ".hb_popup__cross--icon",
+      "closeButtonAlt": "[js-hb-close-popup]",
+      "title": ".hb_popup__title",
+      "inner": ".hb_popup__inner",
+      "image": ".hb_popup__main--image",
+      "rating": ".hb_popup__rating",
+      "subtitle": ".hb_popup__subtitle",
+      "weight": "[js-hb-product-weight]",
+      "weightId": "#hb_product-weight-hb-popup-ajax",
+      "variantSelects": "#variant-selects-hb-popup-ajax",
+      "variantRadio": "#variant-selects-hb-popup-ajax input[type='radio']",
+      "variantLabel": "#variant-selects-hb-popup-ajax label",
+      "quantityForm": "#Quantity-Form-hb-popup-ajax",
+      "quantityInput": "#Quantity-hb-popup-ajax",
+      "atcSection": ".hb_popup__atc",
+      "productForm": "#product-form-hb-popup-ajax",
+      "atcButton": "#ProductSubmitButton-hb-popup-ajax",
+      "atcButtonLoading": "#ProductSubmitButton-hb-popup-ajax.loading",
+      "price": "#price-hb-popup-ajax",
+      "priceClass": ".hb_popup__price",
+      "comparePrice": ".hb_popup__compare--price",
+      "shippingRow": ".hb_popup__shipping--row",
+      "shippingInfo": ".hb_popup__shipping--info"
+    }
+  }
+}
