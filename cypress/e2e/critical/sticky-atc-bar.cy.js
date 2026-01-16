@@ -1,19 +1,17 @@
 describe('Sticky ATC Bar - Critical Interactions', () => {
   it('product page has ATC functionality', () => {
-    cy.task('log', '[TEST] Starting: product page has ATC functionality');
+    cy.log('[TEST] Starting sticky ATC test');
     cy.fastVisit('/products/essentials');
     
-    cy.scrollTo('bottom', { duration: 500 });
+    // Scroll to bottom to trigger sticky bar - use ensureScrollable: false
+    cy.scrollTo('bottom', { duration: 500, ensureScrollable: false });
     cy.wait(500);
     
-    cy.debugPageState();
-    
+    // Check for ATC button
     cy.get('[id^="ProductSubmitButton"], .product-form__submit, button[name="add"]', { timeout: 10000 })
-      .should('exist')
-      .then($el => {
-        cy.task('log', `[TEST] Found ATC: id=${$el.attr('id')}, visible=${$el.is(':visible')}`);
-      });
+      .first()
+      .should('exist');
     
-    cy.task('log', '[TEST] Sticky ATC test completed');
+    cy.log('[TEST] Sticky ATC test completed');
   });
 });

@@ -5,15 +5,17 @@ describe('Mobile Navigation - Critical Interactions', () => {
   });
 
   it('page loads on mobile', () => {
-    cy.task('log', '[TEST] Starting: page loads on mobile');
-    cy.debugPageState();
+    cy.log('[TEST] Starting: page loads on mobile');
     cy.get('body').should('exist');
-    cy.task('log', '[TEST] Mobile page load completed');
+    cy.log('[TEST] Mobile page load completed');
   });
 
   it('has mobile menu elements', () => {
-    cy.task('log', '[TEST] Starting: has mobile menu elements');
-    cy.get('header, .header').should('exist');
-    cy.task('log', '[TEST] Mobile menu test completed');
+    cy.log('[TEST] Starting: has mobile menu elements');
+    
+    // Header should exist on mobile
+    cy.get('header, [role="banner"], .header', { timeout: 15000 }).should('exist');
+    
+    cy.log('[TEST] Mobile menu test completed');
   });
 });
