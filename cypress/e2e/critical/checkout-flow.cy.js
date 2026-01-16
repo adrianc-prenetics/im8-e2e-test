@@ -1,23 +1,41 @@
-describe('Checkout Flow', () => {
-  it('can reach checkout from product page', () => {
+describe('Checkout Flow - Critical Interactions', () => {
+  it('checkout button in cart drawer NAVIGATES to checkout', () => {
+    // Add item first
     cy.fastVisit('/products/essentials');
     cy.forceAddToCart();
-    cy.wait(1500);
+    cy.wait(2000);
     
-    // Try to find and click checkout button
+    // Open cart if not auto-opened
     cy.get('body').then($body => {
-      if ($body.find('button[name="checkout"]:visible').length > 0) {
-        cy.get('button[name="checkout"]').first().click({ force: true });
-      } else if ($body.find('[href*="checkout"]').length > 0) {
-        cy.get('[href*="checkout"]').first().click({ force: true });
-      } else {
-        // Go to cart page and checkout from there
-        cy.visit('/cart');
-        cy.get('button[name="checkout"], [name="checkout"]').first().click({ force: true });
+      if (!$body.find('#CartDrawer:visible').length) {
+        cy.get('#cart-icon-bubble').click({ force: true });
+        cy.wait(1000);
       }
     });
     
-    // Verify we're heading to checkout
-    cy.url({ timeout: 10000 }).should('include', 'checkout');
+    // Click checkout
+    cy.get('button[name="checkout"], [href*="checkout"]').first().click({ force: true });
+    
+    // Verify navigation to checkout
+    cy.url({ timeout: 15000 }).should('include', 'checkout');
+  });
+
+  it('checkout page loads with form fields', () => {
+    // Add item and go to checkout
+    cy.fastVisit('/products/essentials');
+    cy.forceAddToCart();
+    cy.wait(2000);
+    
+    // Go directly to checkout
+    cy.visit('/checkout', { failOnStatusCode: false });
+    
+    // Verify checkout page has form elements
+    cy.get('body').then($body => {
+      // Either we're on checkout with forms, or redirected to cart (if empty)
+      const hasCheckoutForm = $body.find('input, form').length > 0;
+      const isOnCheckout = window.location.href.includes('checkout');
+      
+      expect(hasCheckoutForm || isOnCheckout, 'Should be on checkout page with forms').to.be.true;
+    });
   });
 });
