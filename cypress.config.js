@@ -7,40 +7,35 @@ module.exports = defineConfig({
     supportFile: 'cypress/support/e2e.js',
     fixturesFolder: 'cypress/fixtures',
     
-    // Timeouts
-    defaultCommandTimeout: 15000,
-    pageLoadTimeout: 60000,
-    requestTimeout: 15000,
-    responseTimeout: 30000,
+    // Fast timeouts
+    defaultCommandTimeout: 8000,
+    pageLoadTimeout: 20000,
+    requestTimeout: 8000,
+    responseTimeout: 10000,
     
-    // Viewport defaults (desktop)
+    // Viewport
     viewportWidth: 1280,
     viewportHeight: 720,
     
-    // Recording
-    video: true,
+    // No video, screenshots only on failure
+    video: false,
     screenshotOnRunFailure: true,
-    videosFolder: 'cypress/videos',
-    screenshotsFolder: 'cypress/screenshots',
     
-    // Retries
+    // NO retries - fail fast
     retries: {
-      runMode: 2,
+      runMode: 0,
       openMode: 0,
     },
     
-    // Experimental features
     experimentalRunAllSpecs: true,
     
     setupNodeEvents(on, config) {
-      // Implement node event listeners here
       on('task', {
         log(message) {
           console.log(message);
           return null;
         },
       });
-      
       return config;
     },
   },
