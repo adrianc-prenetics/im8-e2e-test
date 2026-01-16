@@ -66,6 +66,7 @@ jobs:
           name: cypress-screenshots-desktop
           path: cypress/screenshots
           retention-days: 7
+          if-no-files-found: ignore
 
       - name: Upload videos on failure
         uses: actions/upload-artifact@v4
@@ -74,9 +75,10 @@ jobs:
           name: cypress-videos-desktop
           path: cypress/videos
           retention-days: 7
+          if-no-files-found: ignore
 
       - name: Send Slack notification on failure
-        if: failure() && github.event_name != 'pull_request'
+        if: failure() && github.event_name != 'pull_request' && env.SLACK_WEBHOOK_URL != ''
         uses: slackapi/slack-github-action@v1.25.0
         with:
           payload: |
@@ -173,6 +175,7 @@ jobs:
           name: cypress-screenshots-mobile
           path: cypress/screenshots
           retention-days: 7
+          if-no-files-found: ignore
 
       - name: Upload videos on failure
         uses: actions/upload-artifact@v4
@@ -181,9 +184,10 @@ jobs:
           name: cypress-videos-mobile
           path: cypress/videos
           retention-days: 7
+          if-no-files-found: ignore
 
       - name: Send Slack notification on failure
-        if: failure() && github.event_name != 'pull_request'
+        if: failure() && github.event_name != 'pull_request' && env.SLACK_WEBHOOK_URL != ''
         uses: slackapi/slack-github-action@v1.25.0
         with:
           payload: |
@@ -254,6 +258,7 @@ jobs:
     
     steps:
       - name: Send Slack success notification
+        if: env.SLACK_WEBHOOK_URL != ''
         uses: slackapi/slack-github-action@v1.25.0
         with:
           payload: |
