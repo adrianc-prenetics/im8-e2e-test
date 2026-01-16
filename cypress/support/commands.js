@@ -1,31 +1,39 @@
 // Minimal, fast custom commands
 
-// Remove all popups via JavaScript
+// Remove all popups via JavaScript - using only valid native selectors
 Cypress.Commands.add('killPopups', () => {
   cy.window().then((win) => {
-    const selectors = '[role="dialog"], [aria-modal="true"], [class*="klaviyo"], [class*="popup"], .needsclick';
-    const found = win.document.querySelectorAll(selectors);
-    console.log(`[IM8-TEST] killPopups found ${found.length} elements to remove`);
-    found.forEach((el, i) => {
-      try {
-        console.log(`[IM8-TEST] Removing popup ${i}: ${el.className || el.tagName}`);
-        el.style.display = 'none';
-        el.style.visibility = 'hidden';
-      } catch (e) {
-        console.log(`[IM8-TEST] Failed to hide popup ${i}: ${e.message}`);
-      }
-    });
-    
-    // Also accept cookie consent if present
-    const cookieBtn = win.document.querySelector('button.shopify-pc__btn-accept, button:contains("Accept")');
-    if (cookieBtn) {
-      console.log('[IM8-TEST] Clicking cookie accept button');
-      cookieBtn.click();
+    try {
+      // Hide popups using native selectors only
+      const popupSelectors = [
+        '[role="dialog"]',
+        '[aria-modal="true"]',
+        '[class*="klaviyo"]',
+        '[class*="popup"]',
+        '.needsclick'
+      ];
+      
+      popupSelectors.forEach(selector => {
+        try {
+          const elements = win.document.querySelectorAll(selector);
+          elements.forEach(el => {
+            el.style.display = 'none';
+            el.style.visibility = 'hidden';
+          });
+          if (elements.length > 0) {
+            console.log(`[IM8-TEST] Hidden ${elements.length} elements matching: ${selector}`);
+          }
+        } catch (e) {
+          // Ignore selector errors
+        }
+      });
+    } catch (e) {
+      console.log('[IM8-TEST] killPopups error:', e.message);
     }
   });
 });
 
-// Fast page load - simplified
+// Fast page load - simplified, no jQuery selectors
 Cypress.Commands.add('fastVisit', (url) => {
   cy.log(`[IM8-TEST] Visiting: ${url}`);
   
@@ -41,10 +49,14 @@ Cypress.Commands.add('fastVisit', (url) => {
   // Kill popups
   cy.killPopups();
   
-  // Accept cookie consent if visible
+  // Accept cookie consent using Cypress jQuery selector (not native)
   cy.get('body').then($body => {
-    if ($body.find('button:contains("Accept")').length > 0) {
-      cy.get('button:contains("Accept")').first().click({ force: true });
+    // Use jQuery filter to find accept button
+    const acceptBtn = $body.find('button').filter(function() {
+      return $(this).text().toLowerCase().includes('accept');
+    });
+    if (acceptBtn.length > 0) {
+      cy.wrap(acceptBtn.first()).click({ force: true });
       cy.log('[IM8-TEST] Clicked cookie accept');
     }
   });
