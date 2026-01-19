@@ -2,7 +2,7 @@ name: Cypress E2E Tests
 
 on:
   schedule:
-    - cron: '0 * * * *'  # Every hour
+    - cron: '0 */3 * * *'  # Every 3 hours (8 runs/day, ~1,200 min/month - comfortably within 2,000 limit)
   push:
     branches: [main]
   pull_request:
