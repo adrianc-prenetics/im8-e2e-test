@@ -1,6 +1,7 @@
 // Minimal, fast custom commands
 
 // Remove all popups via JavaScript - using only valid native selectors
+// NOTE: Excludes HB popup (.hb_popup) and cart drawer which are needed for testing
 Cypress.Commands.add('killPopups', () => {
   cy.window().then((win) => {
     try {
@@ -14,12 +15,8 @@ Cypress.Commands.add('killPopups', () => {
       }
       
       const popupSelectors = [
-        '[role="dialog"]',
-        '[aria-modal="true"]',
         '[class*="klaviyo"]',
-        '[class*="popup"]',
         '.needsclick',
-        '[class*="modal"]',
         '.kl-private-reset-css-Xuajs1' // Klaviyo specific class
       ];
       
@@ -27,6 +24,29 @@ Cypress.Commands.add('killPopups', () => {
         try {
           const elements = win.document.querySelectorAll(selector);
           elements.forEach(el => {
+            el.style.display = 'none';
+            el.style.visibility = 'hidden';
+          });
+        } catch (e) {
+          // Ignore selector errors
+        }
+      });
+      
+      // Hide generic modals but NOT the HB popup or cart drawer
+      // These are needed for e2e testing
+      const genericModalSelectors = [
+        '[role="dialog"]:not(.cart-drawer):not(.hb_popup)',
+        '[aria-modal="true"]:not(.drawer__inner)'
+      ];
+      
+      genericModalSelectors.forEach(selector => {
+        try {
+          const elements = win.document.querySelectorAll(selector);
+          elements.forEach(el => {
+            // Skip if it's part of cart drawer or HB popup
+            if (el.closest('.cart-drawer') || el.closest('.hb_popup') || el.closest('[js-hb-popup]')) {
+              return;
+            }
             el.style.display = 'none';
             el.style.visibility = 'hidden';
           });
@@ -79,24 +99,24 @@ Cypress.Commands.add('forceAddToCart', () => {
   cy.log('[IM8-TEST] forceAddToCart starting...');
   cy.killPopups();
   
-  const selectors = [
+  // Combined selector - wait for ANY of these to appear (Cypress will retry)
+  // Based on shopify-im8-ui/snippets/buy-buttons.liquid:
+  // - id="ProductSubmitButton-{{ section_id }}" 
+  // - class="product-form__submit"
+  // - name="add"
+  const combinedSelector = [
     '[id^="ProductSubmitButton"]',
     '.product-form__submit',
     'button[name="add"]',
     'form[action*="/cart/add"] button[type="submit"]',
     'product-form button[type="submit"]'
-  ];
+  ].join(', ');
   
-  cy.get('body').then($body => {
-    for (const selector of selectors) {
-      if ($body.find(selector).length > 0) {
-        cy.get(selector).first().scrollIntoView().click({ force: true });
-        return;
-      }
-    }
-    // Fallback
-    cy.get(selectors[0], { timeout: 10000 }).first().click({ force: true });
-  });
+  // Use Cypress retry-ability - wait for any matching element
+  cy.get(combinedSelector, { timeout: 15000 })
+    .first()
+    .scrollIntoView()
+    .click({ force: true });
 });
 
 // Open cart drawer
