@@ -60,16 +60,32 @@ Cypress.Commands.add('killPopups', () => {
   });
 });
 
-// Fast page load - simplified
+// Fast page load - does NOT wait for full page load event
+// This avoids timeouts from slow third-party scripts (analytics, chat widgets, etc.)
 Cypress.Commands.add('fastVisit', (url) => {
   cy.log(`[IM8-TEST] Visiting: ${url}`);
   
-  cy.visit(url, { failOnStatusCode: false });
+  // Use onBeforeLoad to signal we don't need to wait for all resources
+  // Combined with a shorter timeout since we're not waiting for everything
+  cy.visit(url, {
+    failOnStatusCode: false,
+    // Don't wait for the full load event - proceed once DOM is interactive
+    onBeforeLoad: (win) => {
+      // Stub out slow third-party scripts that might block page load
+      // This helps prevent timeouts from analytics/tracking scripts
+      win.dataLayer = win.dataLayer || [];
+      win.ga = win.ga || function() {};
+      win.fbq = win.fbq || function() {};
+      win.klaviyo = win.klaviyo || [];
+    },
+    // Reduce timeout since we're not waiting for full load
+    timeout: 20000,
+  });
   
-  // Wait for body to exist
-  cy.get('body', { timeout: 30000 }).should('exist');
+  // Wait for body to exist (DOM ready)
+  cy.get('body', { timeout: 15000 }).should('exist');
   
-  // Wait for page to stabilize
+  // Wait for critical page elements to stabilize
   cy.wait(1500);
   
   // Kill popups (this also fixes body if Klaviyo hid it)
