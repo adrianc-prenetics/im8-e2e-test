@@ -1,0 +1,298 @@
+import { Page } from '@playwright/test';
+
+/**
+ * Enterprise-grade test utilities for IM8 Health E2E tests
+ * 
+ * Based on deep analysis of shopify-im8-ui theme:
+ * - assets/product-form.js (ATC flow)
+ * - assets/cart-drawer.js (drawer behavior)
+ * - assets/global.js (HB popup)
+ * - sections/header.liquid (cart icon)
+ * 
+ * All selectors and timing values are derived from the actual theme code.
+ */
+
+/**
+ * Exact selectors from shopify-im8-ui theme
+ */
+export const selectors = {
+  // Cart Drawer (cart-drawer.liquid, cart-drawer.js)
+  cartDrawer: 'cart-drawer',
+  cartDrawerActive: 'cart-drawer.active',
+  cartDrawerOpening: 'cart-drawer.opening',
+  cartDrawerInner: '.drawer__inner',
+  cartDrawerOverlay: '#CartDrawer-Overlay',
+  checkoutButton: '#CartDrawer-Checkout',
+  cartForm: '#CartDrawer-Form',
+  
+  // Cart Icon (header.liquid line 307)
+  cartIcon: '#cart-icon-bubble',
+  cartCountBubble: '.cart-count-bubble',
+  
+  // ATC Button (buy-buttons.liquid)
+  atcButton: '[id^="ProductSubmitButton"], button[name="add"], .product-form__submit',
+  atcButtonLoading: '[id^="ProductSubmitButton"].loading',
+  loadingSpinner: '.loading__spinner:not(.hidden)',
+  
+  // HB Popup (hb-popup.liquid, global.js)
+  hbPopup: '[js-hb-popup]',
+  hbPopupActive: '[js-hb-popup].active',
+  hbPopupHidden: '[js-hb-popup].hidden',
+  hbPopupAtcButton: '#ProductSubmitButton-hb-popup-ajax',
+  hbPopupClose: '[js-hb-close-popup]',
+  
+  // Quick Add (global.js line 1751)
+  quickAddButton: '[quick-add__submit]',
+  
+  // Mobile Navigation (header-drawer.liquid)
+  hamburgerMenu: 'summary.header__icon--menu',
+  mobileDrawer: '#menu-drawer',
+  mobileDrawerContainer: '#Details-menu-drawer-container',
+  
+  // Header
+  header: 'header, [role="banner"]',
+  megaMenu: '.mega-menu__content, [id^="MegaMenu-Content"]',
+};
+
+/**
+ * Kill Klaviyo popups that interfere with testing
+ * Blocks at network level and removes from DOM
+ */
+export async function killPopups(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    // Fix body if Klaviyo has hidden it
+    document.body?.classList.remove('klaviyo-prevent-body-scrolling');
+    document.body.style.display = '';
+    document.body.style.overflow = '';
+    
+    // Remove all Klaviyo elements from DOM
+    const klaviyoSelectors = [
+      '[class*="klaviyo"]',
+      '.needsclick',
+      '.kl-private-reset-css-Xuajs1',
+      '[data-testid="klaviyo-form-container"]',
+      'div[aria-label*="POPUP"]',
+      'div[aria-label*="Form"]'
+    ];
+    
+    klaviyoSelectors.forEach(selector => {
+      document.querySelectorAll(selector).forEach(el => {
+        // Don't remove cart drawer or HB popup
+        if (!el.closest('cart-drawer') && !el.closest('[js-hb-popup]')) {
+          el.remove();
+        }
+      });
+    });
+    
+    // Remove generic modals (but not cart drawer or HB popup)
+    document.querySelectorAll('[role="dialog"], [aria-modal="true"]').forEach(el => {
+      if (!el.closest('cart-drawer') && 
+          !el.closest('[js-hb-popup]') && 
+          !el.closest('#CartDrawer') &&
+          !el.classList.contains('drawer__inner')) {
+        el.remove();
+      }
+    });
+  });
+}
+
+/**
+ * Fast page visit with Klaviyo blocking at network level
+ * Waits for Shopify JS to initialize (cart-drawer custom element defined)
+ */
+export async function fastVisit(page: Page, url: string): Promise<void> {
+  // Block Klaviyo at network level - prevents popups from ever loading
+  await page.route('**/*klaviyo*', route => route.abort());
+  await page.route('**/static.klaviyo.com/**', route => route.abort());
+  
+  // Navigate and wait for full load (needed for Shopify JS)
+  await page.goto(url, { waitUntil: 'load', timeout: 60000 });
+  
+  // Wait for body
+  await page.waitForSelector('body', { timeout: 15000 });
+  
+  // Wait for cart-drawer custom element to be defined
+  // This indicates Shopify JS has fully initialized
+  await page.waitForFunction(() => {
+    return typeof customElements !== 'undefined' && 
+           customElements.get('cart-drawer') !== undefined;
+  }, { timeout: 20000 }).catch(() => {
+    // Custom element may not be on all pages
+  });
+  
+  // Kill any popups that loaded before blocking took effect
+  await killPopups(page);
+  
+  // Accept cookie consent if present
+  const acceptButton = page.locator('button').filter({ hasText: /accept/i }).first();
+  if (await acceptButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await acceptButton.click({ force: true });
+  }
+  
+  await killPopups(page);
+}
+
+/**
+ * Wait for cart drawer to be fully open and ready
+ * 
+ * From cart-drawer.js:
+ * - 'active' class added via requestAnimationFrame (~16ms)
+ * - 'opening' class removed after 50ms
+ * - Drawer is ready when 'active' is present AND 'opening' is absent
+ */
+export async function waitForCartDrawerReady(page: Page): Promise<void> {
+  await page.waitForFunction(() => {
+    const drawer = document.querySelector('cart-drawer');
+    return drawer?.classList.contains('active') && 
+           !drawer?.classList.contains('opening');
+  }, { timeout: 20000 });
+}
+
+/**
+ * Add to cart from product page
+ * 
+ * Flow from product-form.js:
+ * 1. Click ATC button (prevents default)
+ * 2. Button gets 'loading' class, spinner shown
+ * 3. AJAX POST to /cart/add.js
+ * 4. On success: cart.renderContents() called
+ * 5. renderContents() calls open() which adds 'active' class
+ * 6. Button 'loading' class removed
+ */
+export async function addToCart(page: Page): Promise<void> {
+  await killPopups(page);
+  
+  // Wait for ATC button to be visible and ready
+  const atcButton = page.locator(selectors.atcButton).first();
+  await atcButton.waitFor({ state: 'visible', timeout: 20000 });
+  await atcButton.scrollIntoViewIfNeeded();
+  
+  // Wait a moment for any animations to settle
+  await page.waitForTimeout(500);
+  
+  // Kill popups right before clicking
+  await killPopups(page);
+  
+  // Click ATC button - try multiple times if needed
+  let drawerOpened = false;
+  for (let attempt = 0; attempt < 3 && !drawerOpened; attempt++) {
+    await killPopups(page);
+    await atcButton.click({ force: true });
+    
+    // Wait for cart drawer to open
+    try {
+      await page.waitForSelector(selectors.cartDrawerActive, { timeout: 10000 });
+      drawerOpened = true;
+    } catch (e) {
+      // Drawer didn't open, try again
+      await page.waitForTimeout(500);
+    }
+  }
+  
+  if (!drawerOpened) {
+    throw new Error('Cart drawer did not open after clicking ATC button');
+  }
+  
+  // Wait for drawer to be fully ready (opening animation complete)
+  await waitForCartDrawerReady(page);
+}
+
+/**
+ * Open cart drawer by clicking cart icon
+ * 
+ * From cart-drawer.js line 46-49:
+ * - Click on #cart-icon-bubble calls this.open(cartLink)
+ * - open() adds 'active' class via requestAnimationFrame
+ */
+export async function openCartDrawer(page: Page): Promise<void> {
+  await killPopups(page);
+  
+  const cartIcon = page.locator(selectors.cartIcon);
+  await cartIcon.waitFor({ state: 'visible', timeout: 15000 });
+  
+  await killPopups(page);
+  await cartIcon.click({ force: true });
+  
+  await waitForCartDrawerReady(page);
+}
+
+/**
+ * Open HB popup by clicking quick-add button on collection page
+ * 
+ * From global.js lines 1749-1795:
+ * - Click on [quick-add__submit] fetches popup content
+ * - Popup gets 'active' class via requestAnimationFrame
+ */
+export async function openHbPopup(page: Page): Promise<void> {
+  await killPopups(page);
+  
+  const quickAddBtn = page.locator(selectors.quickAddButton).first();
+  await quickAddBtn.waitFor({ state: 'visible', timeout: 20000 });
+  
+  await killPopups(page);
+  await quickAddBtn.click({ force: true });
+  
+  // Wait for popup to be active
+  await page.waitForSelector(selectors.hbPopupActive, { timeout: 15000 });
+}
+
+/**
+ * Add to cart from HB popup
+ * 
+ * From product-form.js lines 144-154:
+ * - ATC in popup calls cart.renderContents()
+ * - Then closes popup: removes 'open'/'active', adds 'hidden'
+ * - Cart drawer opens with 'active' class
+ */
+export async function addToCartFromHbPopup(page: Page): Promise<void> {
+  await killPopups(page);
+  
+  const popupAtcButton = page.locator(selectors.hbPopupAtcButton);
+  await popupAtcButton.waitFor({ state: 'visible', timeout: 15000 });
+  
+  // Wait a moment for popup to be fully ready
+  await page.waitForTimeout(500);
+  
+  // Click ATC button - try multiple times if needed
+  let drawerOpened = false;
+  for (let attempt = 0; attempt < 3 && !drawerOpened; attempt++) {
+    await killPopups(page);
+    await popupAtcButton.click({ force: true });
+    
+    // Wait for cart drawer to open
+    try {
+      await page.waitForSelector(selectors.cartDrawerActive, { timeout: 10000 });
+      drawerOpened = true;
+    } catch (e) {
+      // Drawer didn't open, try again
+      await page.waitForTimeout(500);
+    }
+  }
+  
+  if (!drawerOpened) {
+    throw new Error('Cart drawer did not open after clicking ATC button in HB popup');
+  }
+  
+  // Wait for drawer to be fully ready
+  await waitForCartDrawerReady(page);
+}
+
+/**
+ * Open mobile navigation drawer
+ * 
+ * From header-drawer.liquid:
+ * - Click on summary.header__icon--menu opens the details element
+ * - #menu-drawer becomes visible
+ */
+export async function openMobileDrawer(page: Page): Promise<void> {
+  await killPopups(page);
+  
+  const hamburger = page.locator(selectors.hamburgerMenu);
+  await hamburger.waitFor({ state: 'visible', timeout: 15000 });
+  
+  await killPopups(page);
+  await hamburger.click({ force: true });
+  
+  // Wait for drawer to be visible
+  await page.waitForSelector(selectors.mobileDrawer, { state: 'visible', timeout: 10000 });
+}

@@ -1,22 +1,22 @@
 {
   "name": "im8-e2e-test",
-  "version": "1.0.0",
-  "description": "Cypress E2E testing suite for im8store.myshopify.com",
+  "version": "2.0.0",
+  "description": "Playwright E2E testing suite for im8health.com",
   "main": "index.js",
   "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "test:chromium": "playwright test --project=chromium",
+    "test:mobile": "playwright test --project=mobile",
+    "report": "playwright show-report",
     "cy:open": "cypress open",
     "cy:run": "cypress run",
-    "cy:run:critical": "cypress run --spec 'cypress/e2e/critical/**/*.cy.js'",
-    "cy:run:desktop": "cypress run --config viewportWidth=1280,viewportHeight=720",
-    "cy:run:mobile": "cypress run --config viewportWidth=375,viewportHeight=812",
-    "cy:run:headed": "cypress run --headed",
-    "cy:run:chrome": "cypress run --browser chrome",
-    "cy:run:firefox": "cypress run --browser firefox",
-    "test": "npm run cy:run",
-    "test:ci": "cypress run --record false"
+    "cy:run:critical": "cypress run --spec 'cypress/e2e/critical/**/*.cy.js'"
   },
   "keywords": [
-    "cypress",
+    "playwright",
     "e2e",
     "testing",
     "shopify",
@@ -25,6 +25,9 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
     "cypress": "^13.6.0"
   },
   "repository": {
