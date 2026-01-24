@@ -275,16 +275,24 @@ export async function openHbPopup(page: Page): Promise<void> {
 }
 
 /**
- * Add to cart from HB popup
+ * BULLETPROOF: Add to cart from HB popup
  * 
  * Flow from product-form.js lines 144-154:
  * 1. ATC button clicked → form submit intercepted
  * 2. AJAX POST to /cart/add.js
- * 3. On success: cart.renderContents() called → drawer opens
+ * 3. On success: cart.renderContents() called → drawer opens (via setTimeout!)
  * 4. Popup closes: removes 'open', adds 'hidden' (may still have 'active')
  * 
- * Key insight: The popup adds 'hidden' class but may keep 'active' class.
- * The cart drawer opens asynchronously via setTimeout in renderContents().
+ * Key insights from shopify-im8-ui analysis:
+ * - The popup adds 'hidden' class but may keep 'active' class
+ * - cart.renderContents() uses setTimeout(() => this.open()) - ASYNC!
+ * - The popup closes BEFORE cart drawer opens (race condition)
+ * - Cart drawer open sequence: opening → animate + active → (opening removed)
+ * 
+ * BULLETPROOF approach:
+ * 1. Wait for AJAX to complete (primary success indicator)
+ * 2. Don't rely on popup 'hidden' class timing
+ * 3. Wait for cart drawer with any open state class
  */
 export async function addToCartFromHbPopup(page: Page): Promise<void> {
   await killPopups(page);
@@ -302,44 +310,57 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
            btn.getAttribute('aria-disabled') !== 'true';
   }, { timeout: 10000 });
   
-  // Wait for any variant selection to be ready
+  // Wait for any variant selection to be ready (auto-selection happens with delays)
   await page.waitForTimeout(500);
   await killPopups(page);
   
-  // Set up listeners before clicking
-  const cartAddPromise = page.waitForResponse(
-    response => response.url().includes('/cart/add') && response.status() === 200,
-    { timeout: 30000 }
-  );
+  // Try up to 3 times to click and get AJAX response
+  let ajaxSuccess = false;
   
-  // Click the ATC button
-  await popupAtcButton.click();
-  
-  // Wait for AJAX to complete - this is the critical step
-  const response = await cartAddPromise.catch(() => null);
-  
-  if (!response) {
-    // First click didn't work, try with force
+  for (let attempt = 0; attempt < 3 && !ajaxSuccess; attempt++) {
     await killPopups(page);
-    const retryPromise = page.waitForResponse(
-      resp => resp.url().includes('/cart/add') && resp.status() === 200,
-      { timeout: 30000 }
-    );
-    await popupAtcButton.click({ force: true });
-    await retryPromise.catch(() => null);
+    
+    // Set up response listener BEFORE clicking
+    const cartAddPromise = page.waitForResponse(
+      response => response.url().includes('/cart/add') && response.status() === 200,
+      { timeout: 15000 }
+    ).catch(() => null);
+    
+    // Click the ATC button
+    if (attempt === 0) {
+      await popupAtcButton.click();
+    } else {
+      // Use force on retries
+      await popupAtcButton.click({ force: true });
+    }
+    
+    // Wait for AJAX to complete
+    const response = await cartAddPromise;
+    
+    if (response) {
+      ajaxSuccess = true;
+    } else {
+      // Wait before retry
+      await page.waitForTimeout(1000);
+    }
   }
   
-  // After AJAX success, wait for popup to close (hidden class added)
+  if (!ajaxSuccess) {
+    throw new Error('HB Popup ATC: AJAX request to /cart/add did not complete after 3 attempts');
+  }
+  
+  // AJAX succeeded - now wait for cart drawer to open
+  // renderContents() calls open() via setTimeout, so we need to wait
+  // BULLETPROOF: Check for ANY open state class (opening, animate, or active)
   await page.waitForFunction(() => {
-    const popup = document.querySelector('[js-hb-popup]');
-    return popup && popup.classList.contains('hidden');
-  }, { timeout: 10000 }).catch(() => {});
+    const drawer = document.querySelector('cart-drawer');
+    if (!drawer) return false;
+    return drawer.classList.contains('active') || 
+           drawer.classList.contains('animate') ||
+           drawer.classList.contains('opening');
+  }, { timeout: 15000 });
   
-  // Wait for cart drawer to open
-  // renderContents() calls open() via setTimeout, so give it time
-  await page.waitForSelector(selectors.cartDrawerActive, { timeout: 15000 });
-  
-  // Wait for drawer to be fully ready (opening animation complete)
+  // Wait for drawer to be fully ready (active without opening)
   await waitForCartDrawerReady(page);
 }
 
