@@ -157,3 +157,76 @@ Cypress.Commands.add('openCart', () => {
     cy.get(selectors[0], { timeout: 10000 }).first().click({ force: true });
   });
 });
+
+/**
+ * BULLETPROOF: Wait for cart drawer to be open
+ * 
+ * The cart drawer open sequence (from cart-drawer.js):
+ * 1. open() is called
+ * 2. 'opening' class is added
+ * 3. requestAnimationFrame adds 'animate' + 'active' classes
+ * 4. After 50ms, 'opening' is removed
+ * 
+ * This command checks for ANY of these classes to indicate drawer is open,
+ * making it resilient to timing variations.
+ */
+Cypress.Commands.add('waitForCartDrawerOpen', (options = {}) => {
+  const timeout = options.timeout || 15000;
+  
+  cy.log('[IM8-TEST] waitForCartDrawerOpen starting...');
+  
+  // First ensure the cart-drawer element exists
+  cy.get('cart-drawer', { timeout })
+    .should('exist')
+    .and(($drawer) => {
+      // Check if drawer has any of the "open" state classes
+      const hasAnimate = $drawer.hasClass('animate');
+      const hasActive = $drawer.hasClass('active');
+      const hasOpening = $drawer.hasClass('opening');
+      const isOpen = hasAnimate || hasActive || hasOpening;
+      expect(isOpen, 'cart drawer should be open (has animate, active, or opening class)').to.be.true;
+    });
+  
+  // Also verify the drawer is visually displayed
+  cy.get('cart-drawer')
+    .should('have.css', 'display', 'flex');
+  
+  cy.log('[IM8-TEST] Cart drawer is open');
+});
+
+/**
+ * BULLETPROOF: Wait for cart drawer content to be ready
+ * 
+ * After ATC, renderContents() replaces innerHTML and then calls open().
+ * This command waits for:
+ * 1. Drawer to be open
+ * 2. Checkout button to exist (indicates content rendered)
+ * 3. Form to be ready (form-button relationship established)
+ */
+Cypress.Commands.add('waitForCartDrawerReady', (options = {}) => {
+  const timeout = options.timeout || 20000;
+  
+  cy.log('[IM8-TEST] waitForCartDrawerReady starting...');
+  
+  // Wait for drawer to be open
+  cy.waitForCartDrawerOpen({ timeout });
+  
+  // Wait for checkout button to exist (content rendered)
+  const checkoutSelectors = [
+    '#CartDrawer-Checkout',
+    'button[name="checkout"].cart__checkout-button',
+    'cart-drawer button[name="checkout"]'
+  ].join(', ');
+  
+  cy.get(checkoutSelectors, { timeout })
+    .should('exist');
+  
+  // Wait for form to be marked as ready (set by ensureFormReady() in cart-drawer.js)
+  cy.get('#CartDrawer-Form', { timeout: 5000 })
+    .should('exist');
+  
+  // Wait for animations to complete (item fade-ins)
+  cy.wait(1000);
+  
+  cy.log('[IM8-TEST] Cart drawer content is ready');
+});

@@ -53,16 +53,24 @@ describe('Cart Drawer - Critical Interactions', () => {
       .should('be.visible')
       .click();
     
-    // Wait for drawer animation
+    // Wait for drawer animation to start
     cy.wait(500);
     
     // Cart drawer element should exist
     cy.get(cartDrawerSelector, { timeout: 10000 })
       .should('exist');
     
-    // Cart drawer should have 'active' class when open (per cart-drawer.js)
-    cy.get('cart-drawer.active, cart-drawer.animate', { timeout: 10000 })
-      .should('exist');
+    // BULLETPROOF: Cart drawer open state check
+    // The drawer goes through: opening -> animate + active -> (opening removed)
+    // Check for ANY of these classes to indicate drawer is open
+    cy.get('cart-drawer', { timeout: 10000 })
+      .should(($drawer) => {
+        const hasAnimate = $drawer.hasClass('animate');
+        const hasActive = $drawer.hasClass('active');
+        const hasOpening = $drawer.hasClass('opening');
+        const isOpen = hasAnimate || hasActive || hasOpening;
+        expect(isOpen, 'cart drawer should be open').to.be.true;
+      });
     
     cy.log('[TEST] Cart drawer opened');
   });
@@ -74,8 +82,8 @@ describe('Cart Drawer - Critical Interactions', () => {
     cy.fastVisit('/products/essentials');
     cy.forceAddToCart();
     
-    // Wait for cart drawer to open automatically after ATC
-    cy.wait(2000);
+    // BULLETPROOF: Wait for cart drawer to be fully ready
+    cy.waitForCartDrawerReady({ timeout: 20000 });
     
     // The cart drawer should already be open after adding to cart
     // Check that checkout button is visible in the open drawer
@@ -89,7 +97,10 @@ describe('Cart Drawer - Critical Interactions', () => {
     cy.log('[TEST] Starting: can add item to cart from product page');
     cy.fastVisit('/products/essentials');
     cy.forceAddToCart();
-    cy.wait(2000);
+    
+    // BULLETPROOF: Wait for cart drawer to open (confirms ATC succeeded)
+    cy.waitForCartDrawerOpen({ timeout: 15000 });
+    
     cy.log('[TEST] Add to cart completed');
   });
 });

@@ -15,10 +15,23 @@
  * - form="CartDrawer-Form" (action="/cart")
  * - Shopify redirects to checkout when form submitted with name="checkout"
  * 
- * Cart drawer auto-opens after ATC via renderContents() -> open()
+ * Cart drawer open sequence (from cart-drawer.js):
+ * 1. renderContents() is called after ATC
+ * 2. setTimeout(() => open()) is called
+ * 3. open() adds 'opening' class
+ * 4. requestAnimationFrame adds 'animate' + 'active' classes
+ * 5. After 50ms, 'opening' is removed
+ * 
+ * BULLETPROOF: We check for 'animate' OR 'active' since both indicate drawer is open
  */
 describe('Checkout Flow - Critical Interactions', () => {
-  const checkoutButtonSelector = '#CartDrawer-Checkout';
+  // Multiple selectors for checkout button to handle any DOM variations
+  const checkoutButtonSelectors = [
+    '#CartDrawer-Checkout',
+    'button[name="checkout"].cart__checkout-button',
+    '#CartDrawer-Form button[name="checkout"]',
+    'cart-drawer button[name="checkout"]'
+  ].join(', ');
   
   it('can navigate to checkout from cart drawer', () => {
     cy.log('[TEST] Starting: can navigate to checkout from cart drawer');
@@ -27,37 +40,34 @@ describe('Checkout Flow - Critical Interactions', () => {
     cy.fastVisit('/products/essentials');
     cy.forceAddToCart();
     
-    // Step 2: Wait for cart drawer to auto-open and be fully active
-    // The drawer opens via renderContents() which calls open()
-    cy.get('cart-drawer.active', { timeout: 15000 })
-      .should('exist');
+    // Step 2: BULLETPROOF wait for cart drawer to be fully ready
+    // Uses custom command that handles all timing edge cases
+    cy.waitForCartDrawerReady({ timeout: 20000 });
     
-    // Step 3: Wait for drawer content to render (checkout button appears)
-    cy.get(checkoutButtonSelector, { timeout: 10000 })
-      .should('exist');
+    // Step 3: Kill any popups that might have appeared
+    cy.killPopups();
     
-    // Step 4: Wait for any animations/transitions to complete
-    // and for the button to be fully interactive
-    cy.wait(1500);
-    
-    // Step 5: Verify checkout button is visible and enabled
-    cy.get(checkoutButtonSelector)
+    // Step 4: Verify checkout button is visible and interactable
+    cy.get(checkoutButtonSelectors)
+      .first()
+      .scrollIntoView()
       .should('be.visible')
       .should('not.be.disabled');
     
-    // Step 6: Click checkout button with force to ensure it triggers
+    // Step 5: Click checkout button
     // The button is type="submit" with name="checkout" in form action="/cart"
     // Shopify handles the redirect to checkout server-side
-    cy.get(checkoutButtonSelector)
+    cy.get(checkoutButtonSelectors)
+      .first()
       .click({ force: true });
     
-    // Step 7: Wait for navigation away from product page
-    // The checkout flow may go to /cart, /checkout, or Shopify's checkout domain
-    // What matters is that we navigated away from the product page
+    // Step 6: Wait for navigation to begin
+    // Shopify checkout redirect can be slow
     cy.wait(3000);
     
+    // Step 7: Verify we navigated away from product page
+    // The checkout flow may go to /cart, /checkout, or Shopify's checkout domain
     cy.url({ timeout: 30000 }).then(url => {
-      // Verify we're no longer on the product page
       const leftProductPage = !url.includes('/products/');
       
       if (url.includes('checkout')) {
@@ -66,8 +76,6 @@ describe('Checkout Flow - Critical Interactions', () => {
         // Landed on cart page - this is valid Shopify behavior
         // The cart page is part of the checkout flow
         cy.log('[TEST] Navigated to cart page (part of checkout flow)');
-        
-        // Verify the page loaded correctly by checking for cart content
         cy.get('body', { timeout: 5000 }).should('exist');
       } else if (leftProductPage) {
         cy.log(`[TEST] Navigated away from product page to: ${url}`);

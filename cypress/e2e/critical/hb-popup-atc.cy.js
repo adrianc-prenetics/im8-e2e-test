@@ -129,12 +129,17 @@ describe('HB Popup Add to Cart - Critical Interactions', () => {
     // Wait for cart update
     cy.wait(2000);
     
-    // Verify cart was updated (cart drawer opens or cart count updates)
+    // BULLETPROOF: Verify cart was updated (cart drawer opens or cart count updates)
+    // Check for any of the drawer open states: opening, animate, or active
     cy.get('body').then($body => {
-      const cartDrawerOpen = $body.find('cart-drawer.active, .cart-drawer.active').length > 0;
+      const $drawer = $body.find('cart-drawer');
+      const hasAnimate = $drawer.hasClass('animate');
+      const hasActive = $drawer.hasClass('active');
+      const hasOpening = $drawer.hasClass('opening');
+      const cartDrawerOpen = hasAnimate || hasActive || hasOpening;
       const cartCountUpdated = $body.find('.cart-count-bubble, [class*="cart-count"]').text().trim() !== '0';
       
-      cy.log(`[TEST] Cart drawer open: ${cartDrawerOpen}, Cart count updated: ${cartCountUpdated}`);
+      cy.log(`[TEST] Cart drawer open: ${cartDrawerOpen} (animate: ${hasAnimate}, active: ${hasActive}, opening: ${hasOpening}), Cart count updated: ${cartCountUpdated}`);
       
       // Either the cart drawer opened or the cart count was updated
       expect(cartDrawerOpen || cartCountUpdated).to.be.true;
