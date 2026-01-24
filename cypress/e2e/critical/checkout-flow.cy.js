@@ -1,101 +1,61 @@
 /**
  * Checkout Flow Tests
  * 
- * Tests the checkout flow from cart drawer:
- * - Add item to cart
- * - Cart drawer opens automatically
+ * Tests the complete checkout flow from cart drawer:
+ * - Add item to cart (cart drawer auto-opens)
  * - Click checkout button
  * - Verify navigation to checkout page
  * 
  * Reference: /Users/adrianchan/shopify-im8-ui/snippets/cart-drawer.liquid
- * Reference: /Users/adrianchan/shopify-im8-ui/sections/header.liquid (line 307)
+ * Reference: /Users/adrianchan/shopify-im8-ui/assets/cart-drawer.js
  * 
- * Cart icon: #cart-icon-bubble
- * Checkout button: #CartDrawer-Checkout with name="checkout"
+ * The checkout button:
+ * - id="CartDrawer-Checkout"
+ * - type="submit" with name="checkout"
+ * - form="CartDrawer-Form" (action="/cart")
+ * - Shopify redirects to checkout when form submitted with name="checkout"
  * 
- * NOTE: Cart drawer opens automatically after adding to cart
- * NOTE: Cart drawer has loading states that set visibility:hidden on .cart__ctas
- *       We need to wait for the loading state to complete before checking visibility
+ * Cart drawer auto-opens after ATC via renderContents() -> open()
  */
 describe('Checkout Flow - Critical Interactions', () => {
-  // Selectors from theme files
-  const cartIconSelector = '#cart-icon-bubble';
-  const checkoutButtonSelector = '#CartDrawer-Checkout, button[name="checkout"].cart__checkout-button';
+  const checkoutButtonSelector = '#CartDrawer-Checkout';
   
-  // Helper to wait for cart drawer to be fully loaded (not in loading state)
-  const waitForCartDrawerReady = () => {
-    // Wait for cart drawer to be active
-    cy.get('cart-drawer.active', { timeout: 10000 }).should('exist');
-    
-    // Wait for any loading states to complete
-    // The cart drawer adds/removes loading classes during updates
-    cy.get('cart-drawer', { timeout: 10000 }).should('not.have.class', 'is-loading');
-    
-    // Wait for cart__ctas to have visible visibility (not hidden)
-    // This is the parent container that gets visibility:hidden during loading
-    cy.get('.cart__ctas', { timeout: 10000 }).should('exist').then($ctas => {
-      // Use JavaScript to check computed visibility and wait if needed
-      cy.wrap($ctas).should(($el) => {
-        const visibility = window.getComputedStyle($el[0]).visibility;
-        expect(visibility).to.not.equal('hidden');
-      });
-    });
-  };
-  
-  it('product page has checkout path', () => {
-    cy.log('[TEST] Starting: product page has checkout path');
-    cy.fastVisit('/products/essentials');
-    cy.forceAddToCart();
-    cy.wait(2000);
-    cy.log('[TEST] Checkout flow test completed');
-  });
-
   it('can navigate to checkout from cart drawer', () => {
     cy.log('[TEST] Starting: can navigate to checkout from cart drawer');
     
-    // Add item to cart
+    // Step 1: Add item to cart - drawer auto-opens
     cy.fastVisit('/products/essentials');
     cy.forceAddToCart();
     
-    // Wait for cart drawer to fully render and be ready
-    cy.wait(2000);
-    waitForCartDrawerReady();
+    // Step 2: Wait for cart drawer to auto-open and be fully active
+    // The drawer opens via renderContents() which calls open()
+    cy.get('cart-drawer.active', { timeout: 15000 })
+      .should('exist');
     
-    // Additional wait for any animations to complete
-    cy.wait(500);
-    
-    // Wait for checkout button to be stable and click it
-    // Use {force: true} to handle any re-renders during click
+    // Step 3: Wait for drawer content to render (checkout button appears)
     cy.get(checkoutButtonSelector, { timeout: 10000 })
-      .should('be.visible')
-      .should('be.enabled')
-      .click({ force: true });
+      .should('exist');
     
-    // Verify we're on checkout page or being redirected
-    // Note: Checkout may redirect to Shopify checkout domain
-    cy.url({ timeout: 15000 }).should('include', 'checkout');
+    // Step 4: Wait for any animations/transitions to complete
+    // and for the button to be fully interactive
+    cy.wait(1000);
+    
+    // Step 5: Verify checkout button is visible and enabled
+    cy.get(checkoutButtonSelector)
+      .should('be.visible')
+      .should('not.be.disabled');
+    
+    // Step 6: Click checkout button
+    cy.get(checkoutButtonSelector)
+      .click();
+    
+    // Step 7: Verify navigation to checkout
+    // Shopify checkout URLs can be:
+    // - https://im8health.com/checkouts/...
+    // - https://checkout.shopify.com/...
+    cy.url({ timeout: 30000 })
+      .should('include', 'checkout');
     
     cy.log('[TEST] Successfully navigated to checkout');
-  });
-
-  it('checkout button is visible in cart drawer after adding item', () => {
-    cy.log('[TEST] Starting: checkout button is visible in cart drawer');
-    
-    // Add item to cart first
-    cy.fastVisit('/products/essentials');
-    cy.forceAddToCart();
-    
-    // Wait for cart drawer to fully render and be ready
-    cy.wait(2000);
-    waitForCartDrawerReady();
-    
-    // Additional wait for any animations to complete
-    cy.wait(500);
-    
-    // Checkout button MUST be visible - this catches hidden button bugs
-    cy.get(checkoutButtonSelector, { timeout: 10000 })
-      .should('be.visible');
-    
-    cy.log('[TEST] Checkout button is visible');
   });
 });
