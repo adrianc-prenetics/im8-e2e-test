@@ -14,11 +14,33 @@
  * Checkout button: #CartDrawer-Checkout with name="checkout"
  * 
  * NOTE: Cart drawer opens automatically after adding to cart
+ * NOTE: Cart drawer has loading states that set visibility:hidden on .cart__ctas
+ *       We need to wait for the loading state to complete before checking visibility
  */
 describe('Checkout Flow - Critical Interactions', () => {
   // Selectors from theme files
   const cartIconSelector = '#cart-icon-bubble';
   const checkoutButtonSelector = '#CartDrawer-Checkout, button[name="checkout"].cart__checkout-button';
+  
+  // Helper to wait for cart drawer to be fully loaded (not in loading state)
+  const waitForCartDrawerReady = () => {
+    // Wait for cart drawer to be active
+    cy.get('cart-drawer.active', { timeout: 10000 }).should('exist');
+    
+    // Wait for any loading states to complete
+    // The cart drawer adds/removes loading classes during updates
+    cy.get('cart-drawer', { timeout: 10000 }).should('not.have.class', 'is-loading');
+    
+    // Wait for cart__ctas to have visible visibility (not hidden)
+    // This is the parent container that gets visibility:hidden during loading
+    cy.get('.cart__ctas', { timeout: 10000 }).should('exist').then($ctas => {
+      // Use JavaScript to check computed visibility and wait if needed
+      cy.wrap($ctas).should(($el) => {
+        const visibility = window.getComputedStyle($el[0]).visibility;
+        expect(visibility).to.not.equal('hidden');
+      });
+    });
+  };
   
   it('product page has checkout path', () => {
     cy.log('[TEST] Starting: product page has checkout path');
@@ -35,8 +57,12 @@ describe('Checkout Flow - Critical Interactions', () => {
     cy.fastVisit('/products/essentials');
     cy.forceAddToCart();
     
-    // Wait for cart drawer to fully render (it re-renders after ATC)
-    cy.wait(3000);
+    // Wait for cart drawer to fully render and be ready
+    cy.wait(2000);
+    waitForCartDrawerReady();
+    
+    // Additional wait for any animations to complete
+    cy.wait(500);
     
     // Wait for checkout button to be stable and click it
     // Use {force: true} to handle any re-renders during click
@@ -59,8 +85,12 @@ describe('Checkout Flow - Critical Interactions', () => {
     cy.fastVisit('/products/essentials');
     cy.forceAddToCart();
     
-    // Wait for cart drawer to fully render
-    cy.wait(3000);
+    // Wait for cart drawer to fully render and be ready
+    cy.wait(2000);
+    waitForCartDrawerReady();
+    
+    // Additional wait for any animations to complete
+    cy.wait(500);
     
     // Checkout button MUST be visible - this catches hidden button bugs
     cy.get(checkoutButtonSelector, { timeout: 10000 })
