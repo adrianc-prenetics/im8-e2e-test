@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { fastVisit, addToCart, openCartDrawer, waitForCartDrawerReady, waitForCartDrawerOpen, killPopups, selectors } from '../helpers/test-utils';
+import { fastVisit, addToCart, openCartDrawer, waitForCartDrawerReady, killPopups, selectors } from '../helpers/test-utils';
 
 /**
  * Cart Drawer Tests
@@ -8,12 +8,11 @@ import { fastVisit, addToCart, openCartDrawer, waitForCartDrawerReady, waitForCa
  * - snippets/cart-drawer.liquid
  * - assets/cart-drawer.js
  * 
- * Cart drawer open sequence (from cart-drawer.js):
- * 1. open() adds 'opening' class
- * 2. requestAnimationFrame adds 'animate' + 'active' classes
- * 3. After 50ms, 'opening' is removed
- * 
- * BULLETPROOF: We check for 'animate' OR 'active' since both indicate drawer is open
+ * Cart drawer behavior:
+ * - Custom element <cart-drawer>
+ * - Opens with 'active' class (line 98)
+ * - 'opening' class during transition (removed after 50ms)
+ * - Checkout button: #CartDrawer-Checkout
  */
 test.describe('Cart Drawer - Critical Interactions', () => {
   
@@ -31,11 +30,8 @@ test.describe('Cart Drawer - Critical Interactions', () => {
     // Open cart drawer via cart icon (cart-drawer.js line 46-49)
     await openCartDrawer(page);
     
-    // BULLETPROOF: Drawer should be open (any state)
-    await waitForCartDrawerOpen(page);
-    
-    // Verify drawer element is visible
-    await expect(page.locator(selectors.cartDrawer)).toBeVisible({ timeout: 10000 });
+    // Drawer should be active and ready
+    await expect(page.locator(selectors.cartDrawerActive)).toBeVisible({ timeout: 10000 });
   });
 
   test('cart drawer shows checkout button when items in cart', async ({ page }) => {
@@ -44,14 +40,11 @@ test.describe('Cart Drawer - Critical Interactions', () => {
     // Add to cart - drawer opens automatically
     await addToCart(page);
     
-    // BULLETPROOF: Wait for drawer to be fully ready
-    await waitForCartDrawerReady(page);
-    
     // Kill any popups before checking button
     await killPopups(page);
     
-    // Checkout button: use multiple selectors for resilience
-    const checkoutButton = page.locator(selectors.checkoutButtonAny).first();
+    // Checkout button: #CartDrawer-Checkout (cart-drawer.liquid line 1745)
+    const checkoutButton = page.locator(selectors.checkoutButton);
     await expect(checkoutButton).toBeVisible({ timeout: 10000 });
   });
 
@@ -61,10 +54,7 @@ test.describe('Cart Drawer - Critical Interactions', () => {
     // Add to cart and verify drawer opens
     await addToCart(page);
     
-    // BULLETPROOF: Wait for drawer to be open (any state)
-    await waitForCartDrawerOpen(page);
-    
-    // Verify drawer element is visible
-    await expect(page.locator(selectors.cartDrawer)).toBeVisible({ timeout: 10000 });
+    // Drawer should be active
+    await expect(page.locator(selectors.cartDrawerActive)).toBeVisible({ timeout: 10000 });
   });
 });

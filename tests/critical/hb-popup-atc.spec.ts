@@ -60,17 +60,7 @@ test.describe('HB Popup Add to Cart - Critical Interactions', () => {
     // Add to cart from popup - this opens cart drawer
     await addToCartFromHbPopup(page);
     
-    // BULLETPROOF: Cart drawer should be open (any state)
-    // Check for any of: opening, animate, or active classes
-    await page.waitForFunction(() => {
-      const drawer = document.querySelector('cart-drawer');
-      if (!drawer) return false;
-      return drawer.classList.contains('active') || 
-             drawer.classList.contains('animate') ||
-             drawer.classList.contains('opening');
-    }, { timeout: 15000 });
-    
-    // Verify drawer element is visible
-    await expect(page.locator(selectors.cartDrawer)).toBeVisible({ timeout: 10000 });
+    // Cart drawer should be active (product-form.js line 145 → cart-drawer.js open())
+    await expect(page.locator(selectors.cartDrawerActive)).toBeVisible({ timeout: 10000 });
   });
 });

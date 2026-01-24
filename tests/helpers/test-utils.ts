@@ -19,15 +19,10 @@ export const selectors = {
   // Cart Drawer (cart-drawer.liquid, cart-drawer.js)
   cartDrawer: 'cart-drawer',
   cartDrawerActive: 'cart-drawer.active',
-  cartDrawerAnimate: 'cart-drawer.animate',
   cartDrawerOpening: 'cart-drawer.opening',
-  // BULLETPROOF: Check for any open state (opening, animate, or active)
-  cartDrawerOpen: 'cart-drawer.active, cart-drawer.animate, cart-drawer.opening',
   cartDrawerInner: '.drawer__inner',
   cartDrawerOverlay: '#CartDrawer-Overlay',
   checkoutButton: '#CartDrawer-Checkout',
-  // Multiple checkout button selectors for resilience
-  checkoutButtonAny: '#CartDrawer-Checkout, button[name="checkout"].cart__checkout-button, cart-drawer button[name="checkout"]',
   cartForm: '#CartDrawer-Form',
   
   // Cart Icon (header.liquid line 307)
@@ -138,53 +133,19 @@ export async function fastVisit(page: Page, url: string): Promise<void> {
 }
 
 /**
- * BULLETPROOF: Wait for cart drawer to be open
- * 
- * From cart-drawer.js open() method:
- * 1. 'opening' class is added
- * 2. requestAnimationFrame adds 'animate' + 'active' classes
- * 3. After 50ms, 'opening' is removed
- * 
- * This function checks for ANY of these classes to indicate drawer is open,
- * making it resilient to timing variations.
- */
-export async function waitForCartDrawerOpen(page: Page): Promise<void> {
-  await page.waitForFunction(() => {
-    const drawer = document.querySelector('cart-drawer');
-    if (!drawer) return false;
-    // Check for ANY open state class
-    return drawer.classList.contains('active') || 
-           drawer.classList.contains('animate') ||
-           drawer.classList.contains('opening');
-  }, { timeout: 20000 });
-}
-
-/**
- * BULLETPROOF: Wait for cart drawer to be fully open and ready
+ * Wait for cart drawer to be fully open and ready
  * 
  * From cart-drawer.js:
  * - 'active' class added via requestAnimationFrame (~16ms)
  * - 'opening' class removed after 50ms
  * - Drawer is ready when 'active' is present AND 'opening' is absent
- * 
- * This function first waits for drawer to be open (any state),
- * then waits for it to be fully ready (active without opening).
  */
 export async function waitForCartDrawerReady(page: Page): Promise<void> {
-  // First wait for drawer to be open (any state)
-  await waitForCartDrawerOpen(page);
-  
-  // Then wait for it to be fully ready (active without opening)
   await page.waitForFunction(() => {
     const drawer = document.querySelector('cart-drawer');
-    if (!drawer) return false;
-    // Drawer is ready when active is present
-    // (opening may or may not be present, but active is the key)
-    return drawer.classList.contains('active') || drawer.classList.contains('animate');
-  }, { timeout: 10000 });
-  
-  // Wait a bit for animations to settle
-  await page.waitForTimeout(500);
+    return drawer?.classList.contains('active') && 
+           !drawer?.classList.contains('opening');
+  }, { timeout: 20000 });
 }
 
 /**
@@ -252,16 +213,9 @@ export async function addToCart(page: Page): Promise<void> {
     const response = await cartAddPromise;
     
     if (response) {
-      // AJAX succeeded, wait for cart drawer to open (any state)
-      // BULLETPROOF: Check for any open state class
+      // AJAX succeeded, wait for cart drawer
       try {
-        await page.waitForFunction(() => {
-          const drawer = document.querySelector('cart-drawer');
-          if (!drawer) return false;
-          return drawer.classList.contains('active') || 
-                 drawer.classList.contains('animate') ||
-                 drawer.classList.contains('opening');
-        }, { timeout: 10000 });
+        await page.waitForSelector(selectors.cartDrawerActive, { timeout: 10000 });
         success = true;
       } catch (e) {
         // Drawer didn't open, will retry
@@ -381,15 +335,9 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
     return popup && popup.classList.contains('hidden');
   }, { timeout: 10000 }).catch(() => {});
   
-  // BULLETPROOF: Wait for cart drawer to open (any state)
+  // Wait for cart drawer to open
   // renderContents() calls open() via setTimeout, so give it time
-  await page.waitForFunction(() => {
-    const drawer = document.querySelector('cart-drawer');
-    if (!drawer) return false;
-    return drawer.classList.contains('active') || 
-           drawer.classList.contains('animate') ||
-           drawer.classList.contains('opening');
-  }, { timeout: 15000 });
+  await page.waitForSelector(selectors.cartDrawerActive, { timeout: 15000 });
   
   // Wait for drawer to be fully ready (opening animation complete)
   await waitForCartDrawerReady(page);
