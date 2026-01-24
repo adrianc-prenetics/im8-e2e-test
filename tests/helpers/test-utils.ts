@@ -277,10 +277,14 @@ export async function openHbPopup(page: Page): Promise<void> {
 /**
  * Add to cart from HB popup
  * 
- * From product-form.js lines 144-154:
- * - ATC in popup calls cart.renderContents()
- * - Then closes popup: removes 'open'/'active', adds 'hidden'
- * - Cart drawer opens with 'active' class
+ * Flow from product-form.js lines 144-154:
+ * 1. ATC button clicked → form submit intercepted
+ * 2. AJAX POST to /cart/add.js
+ * 3. On success: cart.renderContents() called → drawer opens
+ * 4. Popup closes: removes 'open', adds 'hidden' (may still have 'active')
+ * 
+ * Key insight: The popup adds 'hidden' class but may keep 'active' class.
+ * The cart drawer opens asynchronously via setTimeout in renderContents().
  */
 export async function addToCartFromHbPopup(page: Page): Promise<void> {
   await killPopups(page);
@@ -289,59 +293,53 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
   const popupAtcButton = page.locator(selectors.hbPopupAtcButton);
   await popupAtcButton.waitFor({ state: 'visible', timeout: 15000 });
   
-  // Ensure button is not disabled
+  // Ensure button is not disabled and form is ready
   await page.waitForFunction(() => {
     const btn = document.querySelector('#ProductSubmitButton-hb-popup-ajax');
-    return btn && 
+    const form = document.querySelector('#product-form-hb-popup-ajax');
+    return btn && form &&
            !btn.hasAttribute('disabled') && 
            btn.getAttribute('aria-disabled') !== 'true';
   }, { timeout: 10000 });
   
-  await page.waitForTimeout(300);
+  // Wait for any variant selection to be ready
+  await page.waitForTimeout(500);
   await killPopups(page);
   
-  // Try clicking and waiting for cart drawer with retries
-  let success = false;
+  // Set up listeners before clicking
+  const cartAddPromise = page.waitForResponse(
+    response => response.url().includes('/cart/add') && response.status() === 200,
+    { timeout: 30000 }
+  );
   
-  for (let attempt = 0; attempt < 3 && !success; attempt++) {
+  // Click the ATC button
+  await popupAtcButton.click();
+  
+  // Wait for AJAX to complete - this is the critical step
+  const response = await cartAddPromise.catch(() => null);
+  
+  if (!response) {
+    // First click didn't work, try with force
     await killPopups(page);
-    
-    // Set up request interception to verify AJAX call completes
-    const cartAddPromise = page.waitForResponse(
-      response => response.url().includes('/cart/add') && response.status() === 200,
-      { timeout: 20000 }
-    ).catch(() => null);
-    
-    // Click ATC button
-    if (attempt === 0) {
-      await popupAtcButton.click();
-    } else {
-      await popupAtcButton.click({ force: true });
-    }
-    
-    // Wait for the cart/add AJAX request to complete
-    const response = await cartAddPromise;
-    
-    if (response) {
-      // AJAX succeeded, wait for cart drawer
-      try {
-        await page.waitForSelector(selectors.cartDrawerActive, { timeout: 10000 });
-        success = true;
-      } catch (e) {
-        // Drawer didn't open, will retry
-        await page.waitForTimeout(500);
-      }
-    } else {
-      // AJAX didn't complete, wait and retry
-      await page.waitForTimeout(1000);
-    }
+    const retryPromise = page.waitForResponse(
+      resp => resp.url().includes('/cart/add') && resp.status() === 200,
+      { timeout: 30000 }
+    );
+    await popupAtcButton.click({ force: true });
+    await retryPromise.catch(() => null);
   }
   
-  if (!success) {
-    throw new Error('Cart drawer did not open after clicking ATC button in HB popup');
-  }
+  // After AJAX success, wait for popup to close (hidden class added)
+  await page.waitForFunction(() => {
+    const popup = document.querySelector('[js-hb-popup]');
+    return popup && popup.classList.contains('hidden');
+  }, { timeout: 10000 }).catch(() => {});
   
-  // Wait for drawer to be fully ready
+  // Wait for cart drawer to open
+  // renderContents() calls open() via setTimeout, so give it time
+  await page.waitForSelector(selectors.cartDrawerActive, { timeout: 15000 });
+  
+  // Wait for drawer to be fully ready (opening animation complete)
   await waitForCartDrawerReady(page);
 }
 
