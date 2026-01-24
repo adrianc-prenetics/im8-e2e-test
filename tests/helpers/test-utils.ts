@@ -152,44 +152,82 @@ export async function waitForCartDrawerReady(page: Page): Promise<void> {
  * Add to cart from product page
  * 
  * Flow from product-form.js:
- * 1. Click ATC button (prevents default)
+ * 1. Click ATC button (triggers form submit event)
  * 2. Button gets 'loading' class, spinner shown
  * 3. AJAX POST to /cart/add.js
  * 4. On success: cart.renderContents() called
  * 5. renderContents() calls open() which adds 'active' class
  * 6. Button 'loading' class removed
+ * 
+ * Key insight: The form uses addEventListener('submit') which is intercepted.
+ * We need to ensure the button click triggers the form submit event properly.
  */
 export async function addToCart(page: Page): Promise<void> {
   await killPopups(page);
   
-  // Wait for ATC button to be visible and ready
+  // Wait for product-form custom element to be defined (indicates JS is ready)
+  await page.waitForFunction(() => {
+    return typeof customElements !== 'undefined' && 
+           customElements.get('product-form') !== undefined;
+  }, { timeout: 20000 }).catch(() => {});
+  
+  // Wait for ATC button to be visible and enabled
   const atcButton = page.locator(selectors.atcButton).first();
   await atcButton.waitFor({ state: 'visible', timeout: 20000 });
-  await atcButton.scrollIntoViewIfNeeded();
   
-  // Wait a moment for any animations to settle
-  await page.waitForTimeout(500);
+  // Ensure button is not disabled or aria-disabled
+  await page.waitForFunction(() => {
+    const btn = document.querySelector('[id^="ProductSubmitButton"], button[name="add"], .product-form__submit');
+    return btn && 
+           !btn.hasAttribute('disabled') && 
+           btn.getAttribute('aria-disabled') !== 'true';
+  }, { timeout: 10000 });
+  
+  await atcButton.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(300);
   
   // Kill popups right before clicking
   await killPopups(page);
   
-  // Click ATC button - try multiple times if needed
-  let drawerOpened = false;
-  for (let attempt = 0; attempt < 3 && !drawerOpened; attempt++) {
+  // Try clicking and waiting for cart drawer with retries
+  let success = false;
+  
+  for (let attempt = 0; attempt < 3 && !success; attempt++) {
     await killPopups(page);
-    await atcButton.click({ force: true });
     
-    // Wait for cart drawer to open
-    try {
-      await page.waitForSelector(selectors.cartDrawerActive, { timeout: 10000 });
-      drawerOpened = true;
-    } catch (e) {
-      // Drawer didn't open, try again
-      await page.waitForTimeout(500);
+    // Set up request interception to verify AJAX call completes
+    const cartAddPromise = page.waitForResponse(
+      response => response.url().includes('/cart/add') && response.status() === 200,
+      { timeout: 20000 }
+    ).catch(() => null);
+    
+    // Click ATC button
+    if (attempt === 0) {
+      await atcButton.click();
+    } else {
+      // Use force on retries in case something is blocking
+      await atcButton.click({ force: true });
+    }
+    
+    // Wait for the cart/add AJAX request to complete
+    const response = await cartAddPromise;
+    
+    if (response) {
+      // AJAX succeeded, wait for cart drawer
+      try {
+        await page.waitForSelector(selectors.cartDrawerActive, { timeout: 10000 });
+        success = true;
+      } catch (e) {
+        // Drawer didn't open, will retry
+        await page.waitForTimeout(500);
+      }
+    } else {
+      // AJAX didn't complete, wait and retry
+      await page.waitForTimeout(1000);
     }
   }
   
-  if (!drawerOpened) {
+  if (!success) {
     throw new Error('Cart drawer did not open after clicking ATC button');
   }
   
@@ -247,29 +285,59 @@ export async function openHbPopup(page: Page): Promise<void> {
 export async function addToCartFromHbPopup(page: Page): Promise<void> {
   await killPopups(page);
   
+  // Wait for popup ATC button to be visible and enabled
   const popupAtcButton = page.locator(selectors.hbPopupAtcButton);
   await popupAtcButton.waitFor({ state: 'visible', timeout: 15000 });
   
-  // Wait a moment for popup to be fully ready
-  await page.waitForTimeout(500);
+  // Ensure button is not disabled
+  await page.waitForFunction(() => {
+    const btn = document.querySelector('#ProductSubmitButton-hb-popup-ajax');
+    return btn && 
+           !btn.hasAttribute('disabled') && 
+           btn.getAttribute('aria-disabled') !== 'true';
+  }, { timeout: 10000 });
   
-  // Click ATC button - try multiple times if needed
-  let drawerOpened = false;
-  for (let attempt = 0; attempt < 3 && !drawerOpened; attempt++) {
+  await page.waitForTimeout(300);
+  await killPopups(page);
+  
+  // Try clicking and waiting for cart drawer with retries
+  let success = false;
+  
+  for (let attempt = 0; attempt < 3 && !success; attempt++) {
     await killPopups(page);
-    await popupAtcButton.click({ force: true });
     
-    // Wait for cart drawer to open
-    try {
-      await page.waitForSelector(selectors.cartDrawerActive, { timeout: 10000 });
-      drawerOpened = true;
-    } catch (e) {
-      // Drawer didn't open, try again
-      await page.waitForTimeout(500);
+    // Set up request interception to verify AJAX call completes
+    const cartAddPromise = page.waitForResponse(
+      response => response.url().includes('/cart/add') && response.status() === 200,
+      { timeout: 20000 }
+    ).catch(() => null);
+    
+    // Click ATC button
+    if (attempt === 0) {
+      await popupAtcButton.click();
+    } else {
+      await popupAtcButton.click({ force: true });
+    }
+    
+    // Wait for the cart/add AJAX request to complete
+    const response = await cartAddPromise;
+    
+    if (response) {
+      // AJAX succeeded, wait for cart drawer
+      try {
+        await page.waitForSelector(selectors.cartDrawerActive, { timeout: 10000 });
+        success = true;
+      } catch (e) {
+        // Drawer didn't open, will retry
+        await page.waitForTimeout(500);
+      }
+    } else {
+      // AJAX didn't complete, wait and retry
+      await page.waitForTimeout(1000);
     }
   }
   
-  if (!drawerOpened) {
+  if (!success) {
     throw new Error('Cart drawer did not open after clicking ATC button in HB popup');
   }
   
