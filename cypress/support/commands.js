@@ -110,60 +110,74 @@ Cypress.Commands.add('fastVisit', (url) => {
 });
 
 /**
- * BULLETPROOF: Add to cart with proper button state handling
+ * BULLETPROOF: Add to cart by clicking the ATC button
  * 
  * From product-form.js analysis:
- * - onSubmitHandler checks aria-disabled="true" and returns early if set
- * - Button starts disabled and gets enabled after variant selection
- * - We MUST wait for aria-disabled to NOT be "true" before clicking
+ * - Line 22: onSubmitHandler checks aria-disabled="true" and returns early
+ * - Line 36: Sets aria-disabled=true when starting submission
+ * - Line 162: Removes aria-disabled in finally block after AJAX completes
  * 
- * This command:
- * 1. Scrolls to product form
- * 2. Waits for button to be enabled (aria-disabled !== "true")
- * 3. Clicks the button
- * 4. Waits for cart drawer to open
+ * The button is ENABLED when:
+ * - aria-disabled attribute is NOT "true" (absent or any other value)
+ * - The button is not disabled
+ * 
+ * Strategy:
+ * 1. Wait for product-form custom element to be defined (JS loaded)
+ * 2. Wait for ATC button to exist and be enabled
+ * 3. Click the button
+ * 4. The cart drawer will auto-open via renderContents()
  */
 Cypress.Commands.add('forceAddToCart', () => {
   cy.log('[IM8-TEST] forceAddToCart starting...');
   cy.killPopups();
   
-  // Scroll to product form area first to ensure it's in view
-  cy.get('product-form', { timeout: 30000 })
+  // Wait for product-form custom element to be defined (indicates JS is ready)
+  cy.window().then((win) => {
+    return new Cypress.Promise((resolve) => {
+      const checkCustomElement = () => {
+        if (win.customElements && win.customElements.get('product-form')) {
+          resolve();
+        } else {
+          setTimeout(checkCustomElement, 100);
+        }
+      };
+      checkCustomElement();
+    });
+  });
+  
+  cy.log('[IM8-TEST] product-form custom element is defined');
+  
+  // Wait for page to stabilize
+  cy.wait(2000);
+  cy.killPopups();
+  
+  // ATC button selector
+  const atcSelector = 'product-form button[type="submit"][name="add"]';
+  
+  // Wait for button to exist
+  cy.get(atcSelector, { timeout: 30000 })
     .first()
     .scrollIntoView();
   
-  // Wait for page JS to initialize
-  cy.wait(3000);
-  cy.killPopups();
-  
-  // ATC button selector - target the main product form button
-  const atcSelector = 'product-form button[type="submit"][name="add"], [id^="ProductSubmitButton"]';
-  
-  // CRITICAL: Wait for button to be enabled
-  // The product-form.js checks aria-disabled="true" and returns early
-  // We must wait for this attribute to be removed or set to "false"
+  // Wait for button to be enabled (aria-disabled !== "true")
+  // This is the CRITICAL check from product-form.js line 22
   cy.get(atcSelector, { timeout: 30000 })
     .first()
     .should(($btn) => {
       const ariaDisabled = $btn.attr('aria-disabled');
-      const isDisabled = $btn.prop('disabled');
-      // Button is ready when aria-disabled is not "true" AND not disabled
-      const isReady = ariaDisabled !== 'true' && !isDisabled;
-      expect(isReady, 'ATC button should be enabled (aria-disabled !== "true")').to.be.true;
+      // Button is clickable when aria-disabled is NOT exactly "true"
+      expect(ariaDisabled).to.not.equal('true');
     });
   
   cy.log('[IM8-TEST] ATC button is enabled, clicking...');
   cy.killPopups();
   
   // Click the button
-  cy.get(atcSelector, { timeout: 5000 })
+  cy.get(atcSelector)
     .first()
     .click({ force: true });
   
-  // Wait for cart drawer to open
-  cy.wait(3000);
-  
-  cy.log('[IM8-TEST] ATC click completed');
+  cy.log('[IM8-TEST] ATC button clicked, waiting for cart drawer...');
 });
 
 // Open cart drawer

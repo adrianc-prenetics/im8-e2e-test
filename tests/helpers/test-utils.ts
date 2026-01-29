@@ -149,18 +149,20 @@ export async function waitForCartDrawerReady(page: Page): Promise<void> {
 }
 
 /**
- * Add to cart from product page
+ * BULLETPROOF: Add to cart from product page
  * 
- * Flow from product-form.js:
- * 1. Click ATC button (triggers form submit event)
- * 2. Button gets 'loading' class, spinner shown
- * 3. AJAX POST to /cart/add.js
- * 4. On success: cart.renderContents() called
- * 5. renderContents() calls open() which adds 'active' class
- * 6. Button 'loading' class removed
+ * From product-form.js analysis:
+ * - Line 22: onSubmitHandler checks aria-disabled="true" and returns early
+ * - Line 36: Sets aria-disabled=true when starting submission
+ * - Line 144-146: Calls cart.renderContents() which opens drawer
+ * - Line 162: Removes aria-disabled in finally block after AJAX completes
  * 
- * Key insight: The form uses addEventListener('submit') which is intercepted.
- * We need to ensure the button click triggers the form submit event properly.
+ * Strategy:
+ * 1. Wait for product-form custom element to be defined (JS loaded)
+ * 2. Wait for ATC button to be enabled (aria-disabled !== "true")
+ * 3. Click the button
+ * 4. Wait for AJAX to complete
+ * 5. Wait for cart drawer to open (any state: opening, animate, or active)
  */
 export async function addToCart(page: Page): Promise<void> {
   await killPopups(page);
@@ -169,69 +171,55 @@ export async function addToCart(page: Page): Promise<void> {
   await page.waitForFunction(() => {
     return typeof customElements !== 'undefined' && 
            customElements.get('product-form') !== undefined;
-  }, { timeout: 20000 }).catch(() => {});
+  }, { timeout: 30000 });
   
-  // Wait for ATC button to be visible and enabled
-  const atcButton = page.locator(selectors.atcButton).first();
-  await atcButton.waitFor({ state: 'visible', timeout: 20000 });
-  
-  // Ensure button is not disabled or aria-disabled
-  await page.waitForFunction(() => {
-    const btn = document.querySelector('[id^="ProductSubmitButton"], button[name="add"], .product-form__submit');
-    return btn && 
-           !btn.hasAttribute('disabled') && 
-           btn.getAttribute('aria-disabled') !== 'true';
-  }, { timeout: 10000 });
-  
-  await atcButton.scrollIntoViewIfNeeded();
-  await page.waitForTimeout(300);
-  
-  // Kill popups right before clicking
+  // Wait for page to stabilize
+  await page.waitForTimeout(2000);
   await killPopups(page);
   
-  // Try clicking and waiting for cart drawer with retries
-  let success = false;
+  // Wait for ATC button to exist
+  const atcButton = page.locator('product-form button[type="submit"][name="add"]').first();
+  await atcButton.waitFor({ state: 'attached', timeout: 30000 });
+  await atcButton.scrollIntoViewIfNeeded();
   
-  for (let attempt = 0; attempt < 3 && !success; attempt++) {
-    await killPopups(page);
-    
-    // Set up request interception to verify AJAX call completes
-    const cartAddPromise = page.waitForResponse(
-      response => response.url().includes('/cart/add') && response.status() === 200,
-      { timeout: 20000 }
-    ).catch(() => null);
-    
-    // Click ATC button
-    if (attempt === 0) {
-      await atcButton.click();
-    } else {
-      // Use force on retries in case something is blocking
-      await atcButton.click({ force: true });
-    }
-    
-    // Wait for the cart/add AJAX request to complete
-    const response = await cartAddPromise;
-    
-    if (response) {
-      // AJAX succeeded, wait for cart drawer
-      try {
-        await page.waitForSelector(selectors.cartDrawerActive, { timeout: 10000 });
-        success = true;
-      } catch (e) {
-        // Drawer didn't open, will retry
-        await page.waitForTimeout(500);
-      }
-    } else {
-      // AJAX didn't complete, wait and retry
-      await page.waitForTimeout(1000);
-    }
+  // CRITICAL: Wait for button to be enabled (aria-disabled !== "true")
+  // This is the key check from product-form.js line 22
+  await page.waitForFunction(() => {
+    const btn = document.querySelector('product-form button[type="submit"][name="add"]');
+    if (!btn) return false;
+    const ariaDisabled = btn.getAttribute('aria-disabled');
+    // Button is clickable when aria-disabled is NOT exactly "true"
+    return ariaDisabled !== 'true';
+  }, { timeout: 30000 });
+  
+  await killPopups(page);
+  
+  // Set up AJAX response listener before clicking
+  const cartAddPromise = page.waitForResponse(
+    response => response.url().includes('/cart/add') && response.status() === 200,
+    { timeout: 30000 }
+  ).catch(() => null);
+  
+  // Click the button
+  await atcButton.click({ force: true });
+  
+  // Wait for AJAX to complete
+  const response = await cartAddPromise;
+  
+  if (!response) {
+    throw new Error('Cart add AJAX request did not complete');
   }
   
-  if (!success) {
-    throw new Error('Cart drawer did not open after clicking ATC button');
-  }
+  // Wait for cart drawer to open (any state: opening, animate, or active)
+  await page.waitForFunction(() => {
+    const drawer = document.querySelector('cart-drawer');
+    if (!drawer) return false;
+    return drawer.classList.contains('active') || 
+           drawer.classList.contains('animate') ||
+           drawer.classList.contains('opening');
+  }, { timeout: 15000 });
   
-  // Wait for drawer to be fully ready (opening animation complete)
+  // Wait for drawer to be fully ready
   await waitForCartDrawerReady(page);
 }
 
