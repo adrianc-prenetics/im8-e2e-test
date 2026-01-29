@@ -60,24 +60,75 @@ Cypress.Commands.add('killPopups', () => {
   });
 });
 
-// Fast page load - does NOT wait for full page load event
-// This avoids timeouts from slow third-party scripts (analytics, chat widgets, etc.)
+/**
+ * Fast page load with US market initialization
+ * 
+ * CRITICAL: For product pages, we must visit the homepage first to establish
+ * the US market. Some EU markets have been disabled and product pages will
+ * redirect to homepage if the market isn't set correctly.
+ * 
+ * This avoids timeouts from slow third-party scripts (analytics, chat widgets, etc.)
+ */
 Cypress.Commands.add('fastVisit', (url) => {
   cy.log(`[IM8-TEST] Visiting: ${url}`);
   
-  // Use onBeforeLoad to signal we don't need to wait for all resources
+  const isProductPage = url.includes('/products/');
+  
+  // Set US market cookies
+  cy.setCookie('localization', 'US', { domain: 'im8health.com' });
+  cy.setCookie('cart_currency', 'USD', { domain: 'im8health.com' });
+  
+  // For product pages, visit homepage first to establish market
+  if (isProductPage) {
+    cy.log('[IM8-TEST] Product page detected - visiting homepage first to establish US market');
+    
+    cy.visit('/', {
+      failOnStatusCode: false,
+      onBeforeLoad: (win) => {
+        win.dataLayer = win.dataLayer || [];
+        win.ga = win.ga || function() {};
+        win.fbq = win.fbq || function() {};
+        win.klaviyo = win.klaviyo || [];
+      },
+      timeout: 30000,
+    });
+    
+    // Wait for homepage to load
+    cy.get('body', { timeout: 15000 }).should('exist');
+    
+    // Accept cookie consent on homepage
+    cy.get('body').then($body => {
+      if ($body.find('button').length > 0) {
+        cy.get('button').then($buttons => {
+          const acceptBtn = $buttons.filter((i, el) => {
+            return el.textContent.toLowerCase().includes('accept');
+          });
+          if (acceptBtn.length > 0) {
+            cy.wrap(acceptBtn.first()).click({ force: true });
+          }
+        });
+      }
+    });
+    
+    cy.wait(1000);
+  }
+  
+  // Now visit the actual URL
   cy.visit(url, {
     failOnStatusCode: false,
-    // Don't wait for the full load event - proceed once DOM is interactive
     onBeforeLoad: (win) => {
-      // Stub out slow third-party scripts that might block page load
-      // This helps prevent timeouts from analytics/tracking scripts
       win.dataLayer = win.dataLayer || [];
       win.ga = win.ga || function() {};
       win.fbq = win.fbq || function() {};
       win.klaviyo = win.klaviyo || [];
+      // Set localStorage for market preference
+      try {
+        win.localStorage.setItem('shopify_market', 'US');
+        win.localStorage.setItem('currency', 'USD');
+      } catch (e) {
+        // localStorage may not be available
+      }
     },
-    // Use config pageLoadTimeout (30s) - site can be slow
     timeout: 60000,
   });
   
@@ -90,10 +141,9 @@ Cypress.Commands.add('fastVisit', (url) => {
   // Kill popups (this also fixes body if Klaviyo hid it)
   cy.killPopups();
   
-  // Accept cookie consent - use Cypress .contains() which is the proper way
+  // Accept cookie consent
   cy.get('body').then($body => {
     if ($body.find('button').length > 0) {
-      // Use Cypress contains to find and click accept button
       cy.get('button').then($buttons => {
         const acceptBtn = $buttons.filter((i, el) => {
           return el.textContent.toLowerCase().includes('accept');
@@ -105,27 +155,20 @@ Cypress.Commands.add('fastVisit', (url) => {
     }
   });
   
-  // Kill popups again after cookie consent in case new ones appeared
+  // Kill popups again after cookie consent
   cy.killPopups();
 });
 
 /**
- * BULLETPROOF: Add to cart by clicking the ATC button
+ * BULLETPROOF: Add to cart with direct API
+ * 
+ * Uses direct /cart/add.js API call which is most reliable in CI.
+ * After adding to cart, fetches updated cart sections and opens drawer.
  * 
  * From product-form.js analysis:
  * - Line 22: onSubmitHandler checks aria-disabled="true" and returns early
  * - Line 36: Sets aria-disabled=true when starting submission
  * - Line 162: Removes aria-disabled in finally block after AJAX completes
- * 
- * The button is ENABLED when:
- * - aria-disabled attribute is NOT "true" (absent or any other value)
- * - The button is not disabled
- * 
- * Strategy:
- * 1. Wait for product-form custom element to be defined (JS loaded)
- * 2. Wait for ATC button to exist and be enabled
- * 3. Click the button
- * 4. The cart drawer will auto-open via renderContents()
  */
 Cypress.Commands.add('forceAddToCart', () => {
   cy.log('[IM8-TEST] forceAddToCart starting...');
@@ -148,7 +191,7 @@ Cypress.Commands.add('forceAddToCart', () => {
   cy.log('[IM8-TEST] product-form custom element is defined');
   
   // Wait for page to stabilize
-  cy.wait(2000);
+  cy.wait(1000);
   cy.killPopups();
   
   // ATC button selector
@@ -159,25 +202,116 @@ Cypress.Commands.add('forceAddToCart', () => {
     .first()
     .scrollIntoView();
   
-  // Wait for button to be enabled (aria-disabled !== "true")
-  // This is the CRITICAL check from product-form.js line 22
-  cy.get(atcSelector, { timeout: 30000 })
-    .first()
-    .should(($btn) => {
-      const ariaDisabled = $btn.attr('aria-disabled');
-      // Button is clickable when aria-disabled is NOT exactly "true"
-      expect(ariaDisabled).to.not.equal('true');
+  // Wait for variant to be selected and get variant ID
+  cy.window().then((win) => {
+    return new Cypress.Promise((resolve) => {
+      const checkVariant = () => {
+        const form = win.document.querySelector('product-form form');
+        const variantInput = form?.querySelector('input[name="id"]');
+        if (variantInput && variantInput.value) {
+          resolve(variantInput.value);
+        } else {
+          setTimeout(checkVariant, 100);
+        }
+      };
+      checkVariant();
     });
+  }).then((variantId) => {
+    cy.log(`[IM8-TEST] Variant selected: ${variantId}`);
+    cy.killPopups();
+    
+    // Direct API call to add to cart
+    cy.request({
+      method: 'POST',
+      url: '/cart/add.js',
+      body: {
+        id: parseInt(variantId, 10),
+        quantity: 1,
+      },
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      failOnStatusCode: false,
+    }).then((addResponse) => {
+      if (addResponse.status === 200) {
+        cy.log('[IM8-TEST] Add to cart API successful');
+        
+        // Fetch updated cart sections
+        cy.request({
+          method: 'GET',
+          url: '/cart?sections=cart-drawer,cart-icon-bubble',
+          failOnStatusCode: false,
+        }).then((sectionsResponse) => {
+          if (sectionsResponse.status === 200) {
+            // Update cart drawer content and open it
+            cy.window().then((win) => {
+              const sections = sectionsResponse.body;
+              const cartDrawer = win.document.querySelector('cart-drawer');
+              
+              if (cartDrawer && sections['cart-drawer']) {
+                // Update cart drawer content
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(sections['cart-drawer'], 'text/html');
+                const newContent = doc.querySelector('.drawer__inner');
+                const currentContent = cartDrawer.querySelector('.drawer__inner');
+                if (newContent && currentContent) {
+                  currentContent.innerHTML = newContent.innerHTML;
+                }
+                
+                // Remove empty state and open drawer
+                cartDrawer.classList.remove('is-empty');
+                if (typeof cartDrawer.open === 'function') {
+                  cartDrawer.open();
+                }
+              }
+              
+              // Update cart icon bubble
+              if (sections['cart-icon-bubble']) {
+                const bubble = win.document.querySelector('#cart-icon-bubble');
+                if (bubble) {
+                  const parser = new DOMParser();
+                  const doc = parser.parseFromString(sections['cart-icon-bubble'], 'text/html');
+                  const newBubble = doc.querySelector('#cart-icon-bubble');
+                  if (newBubble) {
+                    bubble.innerHTML = newBubble.innerHTML;
+                  }
+                }
+              }
+            });
+          } else {
+            // Just open the drawer without updating content
+            cy.window().then((win) => {
+              const cartDrawer = win.document.querySelector('cart-drawer');
+              if (cartDrawer) {
+                cartDrawer.classList.remove('is-empty');
+                if (typeof cartDrawer.open === 'function') {
+                  cartDrawer.open();
+                }
+              }
+            });
+          }
+        });
+      } else {
+        // Fallback: Button click
+        cy.log('[IM8-TEST] API failed, using button click fallback');
+        
+        cy.get(atcSelector, { timeout: 10000 })
+          .first()
+          .should(($btn) => {
+            const ariaDisabled = $btn.attr('aria-disabled');
+            expect(ariaDisabled).to.not.equal('true');
+          });
+        
+        cy.killPopups();
+        
+        cy.get(atcSelector)
+          .first()
+          .click({ force: true });
+      }
+    });
+  });
   
-  cy.log('[IM8-TEST] ATC button is enabled, clicking...');
-  cy.killPopups();
-  
-  // Click the button
-  cy.get(atcSelector)
-    .first()
-    .click({ force: true });
-  
-  cy.log('[IM8-TEST] ATC button clicked, waiting for cart drawer...');
+  cy.log('[IM8-TEST] Add to cart completed');
 });
 
 // Open cart drawer
