@@ -30,6 +30,13 @@ export default defineConfig({
     /* Base URL for all tests */
     baseURL: 'https://im8health.com',
     
+    /* CRITICAL: Force US locale to ensure products are available
+     * Some EU markets have been disabled and show empty collections
+     * US/HK markets have full product availability */
+    locale: 'en-US',
+    timezoneId: 'America/New_York',
+    geolocation: { longitude: -73.935242, latitude: 40.730610 }, // New York
+    
     /* Collect trace on failure */
     trace: 'on-first-retry',
     
