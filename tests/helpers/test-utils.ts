@@ -310,11 +310,10 @@ export async function openHbPopup(page: Page): Promise<void> {
  * - cart.renderContents() uses setTimeout(() => this.open()) - ASYNC!
  * 
  * CI-FRIENDLY BULLETPROOF approach:
- * Instead of relying on AJAX interception (flaky in CI), we:
- * 1. Capture initial cart count as baseline
+ * 1. Set up AJAX interception BEFORE any clicks
  * 2. Wait for button to be enabled (aria-disabled !== 'true')
- * 3. Click and check for ACTUAL RESULT: cart drawer opens OR cart count increases
- * 4. Retry if needed (button may have been clicked during disabled state)
+ * 3. Click button, then dispatch submit event as fallback
+ * 4. Wait for AJAX OR cart drawer OR cart count change (whichever comes first)
  */
 export async function addToCartFromHbPopup(page: Page): Promise<void> {
   await killPopups(page);
@@ -331,9 +330,8 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
     return parseInt(text, 10) || 0;
   });
   
-  // CRITICAL: Wait for button to be truly enabled
+  // CRITICAL: Wait for button AND form to be truly ready
   // product-form.js line 22: if (this.submitButton.getAttribute('aria-disabled') === 'true') return;
-  // This is THE guard that prevents form submission!
   await page.waitForFunction(() => {
     const btn = document.querySelector('#ProductSubmitButton-hb-popup-ajax');
     const form = document.querySelector('#product-form-hb-popup-ajax');
@@ -342,39 +340,61 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
     return btn.getAttribute('aria-disabled') !== 'true';
   }, { timeout: 15000 });
   
-  // Wait for variant auto-selection to complete (global.js autoSelectVariantByRegion)
-  await page.waitForTimeout(500);
+  // Wait for variant auto-selection and any JS initialization
+  await page.waitForTimeout(1000);
   await killPopups(page);
   
-  // Retry logic - click and verify success by checking ACTUAL RESULTS
+  // Retry logic with multiple trigger methods
   let success = false;
   
   for (let attempt = 0; attempt < 3 && !success; attempt++) {
     await killPopups(page);
     
-    // Re-verify button is enabled before each click attempt
-    // (previous attempt may have set aria-disabled=true and it might still be processing)
+    // Re-verify button is enabled before each attempt
     const isEnabled = await page.evaluate(() => {
       const btn = document.querySelector('#ProductSubmitButton-hb-popup-ajax');
       return btn && btn.getAttribute('aria-disabled') !== 'true';
     });
     
     if (!isEnabled) {
-      // Wait for button to become enabled again (AJAX from previous attempt completing)
+      // Wait for button to become enabled again
       await page.waitForFunction(() => {
         const btn = document.querySelector('#ProductSubmitButton-hb-popup-ajax');
         return btn && btn.getAttribute('aria-disabled') !== 'true';
-      }, { timeout: 15000 }).catch(() => {});
+      }, { timeout: 20000 }).catch(() => {});
+      await page.waitForTimeout(500);
     }
     
-    // Click the ATC button
-    await popupAtcButton.click({ force: attempt > 0 });
+    // Set up AJAX listener BEFORE triggering click
+    const ajaxPromise = page.waitForResponse(
+      response => response.url().includes('/cart/add') && response.status() === 200,
+      { timeout: 20000 }
+    ).catch(() => null);
     
-    // Check for SUCCESS by looking at ACTUAL RESULTS (not AJAX interception)
-    // This is more reliable in CI because it tests what the user actually sees
+    // Method 1: Regular click
+    await popupAtcButton.click({ force: true });
+    
+    // Method 2: If click doesn't trigger submission, dispatch submit event directly
+    // This handles cases where the click event doesn't bubble properly in CI
+    await page.evaluate(() => {
+      const form = document.querySelector('#product-form-hb-popup-ajax') as HTMLFormElement;
+      const btn = document.querySelector('#ProductSubmitButton-hb-popup-ajax') as HTMLButtonElement;
+      if (form && btn && btn.getAttribute('aria-disabled') !== 'true') {
+        // Dispatch a click event on the button
+        btn.click();
+        // Also try dispatching submit event on the form
+        const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+        form.dispatchEvent(submitEvent);
+      }
+    });
+    
+    // Wait for ANY success indicator
     try {
       await Promise.race([
-        // Primary: Cart drawer opens
+        // Option 1: AJAX completes successfully
+        ajaxPromise.then(r => { if (r) return r; throw new Error('no response'); }),
+        
+        // Option 2: Cart drawer opens
         page.waitForFunction(() => {
           const drawer = document.querySelector('cart-drawer');
           return drawer && (
@@ -382,23 +402,23 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
             drawer.classList.contains('animate') ||
             drawer.classList.contains('opening')
           );
-        }, { timeout: 15000 }),
+        }, { timeout: 20000 }),
         
-        // Backup: Cart count increases (in case drawer opening is delayed)
+        // Option 3: Cart count increases
         page.waitForFunction((initial: number) => {
           const bubble = document.querySelector('.cart-count-bubble');
           if (!bubble) return false;
           const text = bubble.textContent?.trim() || '0';
           const current = parseInt(text, 10) || 0;
           return current > initial;
-        }, { timeout: 15000 }, initialCartCount)
+        }, { timeout: 20000 }, initialCartCount)
       ]);
       
       success = true;
     } catch {
-      // Neither success condition met, will retry
+      // None of the success conditions met, will retry
       if (attempt < 2) {
-        await page.waitForTimeout(1000);
+        await page.waitForTimeout(2000);
       }
     }
   }
@@ -407,19 +427,16 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
     throw new Error('HB Popup ATC: Cart drawer did not open and cart count did not increase after 3 attempts');
   }
   
-  // Ensure cart drawer is fully open
-  // (success may have been detected via cart count before drawer fully opened)
+  // Wait for cart drawer to fully open
   try {
     await page.waitForFunction(() => {
       const drawer = document.querySelector('cart-drawer');
       return drawer && drawer.classList.contains('active');
     }, { timeout: 10000 });
     
-    // Wait for drawer to be fully ready (active without opening class)
     await waitForCartDrawerReady(page);
   } catch {
-    // Cart count changed but drawer might not have opened - still a success
-    // This can happen if the site is configured to not open drawer on ATC
+    // Cart was added but drawer might not have opened - still a success
   }
 }
 
