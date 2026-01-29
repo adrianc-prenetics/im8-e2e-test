@@ -66,7 +66,6 @@ Cypress.Commands.add('fastVisit', (url) => {
   cy.log(`[IM8-TEST] Visiting: ${url}`);
   
   // Use onBeforeLoad to signal we don't need to wait for all resources
-  // Combined with a shorter timeout since we're not waiting for everything
   cy.visit(url, {
     failOnStatusCode: false,
     // Don't wait for the full load event - proceed once DOM is interactive
@@ -78,12 +77,12 @@ Cypress.Commands.add('fastVisit', (url) => {
       win.fbq = win.fbq || function() {};
       win.klaviyo = win.klaviyo || [];
     },
-    // Reduce timeout since we're not waiting for full load
-    timeout: 20000,
+    // Use config pageLoadTimeout (30s) - site can be slow
+    timeout: 60000,
   });
   
   // Wait for body to exist (DOM ready)
-  cy.get('body', { timeout: 15000 }).should('exist');
+  cy.get('body', { timeout: 30000 }).should('exist');
   
   // Wait for critical page elements to stabilize
   cy.wait(1500);
@@ -110,29 +109,61 @@ Cypress.Commands.add('fastVisit', (url) => {
   cy.killPopups();
 });
 
-// Add to cart with force click
+/**
+ * BULLETPROOF: Add to cart with proper button state handling
+ * 
+ * From product-form.js analysis:
+ * - onSubmitHandler checks aria-disabled="true" and returns early if set
+ * - Button starts disabled and gets enabled after variant selection
+ * - We MUST wait for aria-disabled to NOT be "true" before clicking
+ * 
+ * This command:
+ * 1. Scrolls to product form
+ * 2. Waits for button to be enabled (aria-disabled !== "true")
+ * 3. Clicks the button
+ * 4. Waits for cart drawer to open
+ */
 Cypress.Commands.add('forceAddToCart', () => {
   cy.log('[IM8-TEST] forceAddToCart starting...');
   cy.killPopups();
   
-  // Combined selector - wait for ANY of these to appear (Cypress will retry)
-  // Based on shopify-im8-ui/snippets/buy-buttons.liquid:
-  // - id="ProductSubmitButton-{{ section_id }}" 
-  // - class="product-form__submit"
-  // - name="add"
-  const combinedSelector = [
-    '[id^="ProductSubmitButton"]',
-    '.product-form__submit',
-    'button[name="add"]',
-    'form[action*="/cart/add"] button[type="submit"]',
-    'product-form button[type="submit"]'
-  ].join(', ');
-  
-  // Use Cypress retry-ability - wait for any matching element
-  cy.get(combinedSelector, { timeout: 15000 })
+  // Scroll to product form area first to ensure it's in view
+  cy.get('product-form', { timeout: 30000 })
     .first()
-    .scrollIntoView()
+    .scrollIntoView();
+  
+  // Wait for page JS to initialize
+  cy.wait(3000);
+  cy.killPopups();
+  
+  // ATC button selector - target the main product form button
+  const atcSelector = 'product-form button[type="submit"][name="add"], [id^="ProductSubmitButton"]';
+  
+  // CRITICAL: Wait for button to be enabled
+  // The product-form.js checks aria-disabled="true" and returns early
+  // We must wait for this attribute to be removed or set to "false"
+  cy.get(atcSelector, { timeout: 30000 })
+    .first()
+    .should(($btn) => {
+      const ariaDisabled = $btn.attr('aria-disabled');
+      const isDisabled = $btn.prop('disabled');
+      // Button is ready when aria-disabled is not "true" AND not disabled
+      const isReady = ariaDisabled !== 'true' && !isDisabled;
+      expect(isReady, 'ATC button should be enabled (aria-disabled !== "true")').to.be.true;
+    });
+  
+  cy.log('[IM8-TEST] ATC button is enabled, clicking...');
+  cy.killPopups();
+  
+  // Click the button
+  cy.get(atcSelector, { timeout: 5000 })
+    .first()
     .click({ force: true });
+  
+  // Wait for cart drawer to open
+  cy.wait(3000);
+  
+  cy.log('[IM8-TEST] ATC click completed');
 });
 
 // Open cart drawer

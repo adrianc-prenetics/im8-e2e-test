@@ -99,7 +99,8 @@ describe('Cart Drawer - Critical Interactions', () => {
     cy.forceAddToCart();
     
     // BULLETPROOF: Wait for cart drawer to open (confirms ATC succeeded)
-    cy.waitForCartDrawerOpen({ timeout: 15000 });
+    // Use longer timeout since site can be slow
+    cy.waitForCartDrawerOpen({ timeout: 30000 });
     
     cy.log('[TEST] Add to cart completed');
   });

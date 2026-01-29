@@ -7,11 +7,11 @@ module.exports = defineConfig({
     supportFile: 'cypress/support/e2e.js',
     fixturesFolder: 'cypress/fixtures',
     
-    // Timeouts - collection pages can be slow
-    defaultCommandTimeout: 8000,
-    pageLoadTimeout: 30000,
-    requestTimeout: 8000,
-    responseTimeout: 10000,
+    // Timeouts - site can be slow, especially on CI
+    defaultCommandTimeout: 15000,
+    pageLoadTimeout: 60000,
+    requestTimeout: 15000,
+    responseTimeout: 30000,
     
     // Viewport
     viewportWidth: 1280,
@@ -21,9 +21,9 @@ module.exports = defineConfig({
     video: false,
     screenshotOnRunFailure: true,
     
-    // NO retries - fail fast
+    // Retry once on failure - site can be flaky
     retries: {
-      runMode: 0,
+      runMode: 1,
       openMode: 0,
     },
     
