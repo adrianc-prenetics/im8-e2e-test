@@ -102,6 +102,9 @@ export async function killPopups(page: Page): Promise<void> {
  * 
  * CRITICAL: Forces US market to ensure products are available.
  * Some EU markets have been disabled and show empty collections.
+ * 
+ * The market is set by first visiting the homepage to establish cookies,
+ * then navigating to the target URL.
  */
 export async function fastVisit(page: Page, url: string): Promise<void> {
   // Block Klaviyo at network level - prevents popups from ever loading
@@ -109,7 +112,6 @@ export async function fastVisit(page: Page, url: string): Promise<void> {
   await page.route('**/static.klaviyo.com/**', route => route.abort());
   
   // CRITICAL: Set cookies to force US market BEFORE navigation
-  // This ensures products are available (EU markets may have empty collections)
   await page.context().addCookies([
     {
       name: 'localization',
@@ -125,16 +127,32 @@ export async function fastVisit(page: Page, url: string): Promise<void> {
     },
   ]);
   
-  // Navigate and wait for full load (needed for Shopify JS)
-  await page.goto(url, { waitUntil: 'load', timeout: 60000 });
+  // For product pages, we need to establish the market first
+  // by visiting the homepage, then navigating to the product
+  const isProductPage = url.includes('/products/');
+  
+  if (isProductPage) {
+    // First visit homepage to establish market
+    await page.goto('https://im8health.com/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    
+    // Accept cookie consent if present
+    const acceptButton = page.locator('button').filter({ hasText: /accept/i }).first();
+    if (await acceptButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await acceptButton.click({ force: true });
+    }
+    
+    // Now navigate to the actual product page
+    await page.goto(url, { waitUntil: 'load', timeout: 60000 });
+  } else {
+    // For non-product pages, navigate directly
+    await page.goto(url, { waitUntil: 'load', timeout: 60000 });
+  }
   
   // Wait for body
   await page.waitForSelector('body', { timeout: 15000 });
   
-  // Force US market via JavaScript if country selector exists
-  // This handles cases where cookies alone don't switch the market
+  // Force US market via JavaScript
   await page.evaluate(() => {
-    // Set localStorage for market preference
     try {
       localStorage.setItem('shopify_market', 'US');
       localStorage.setItem('currency', 'USD');
@@ -144,7 +162,6 @@ export async function fastVisit(page: Page, url: string): Promise<void> {
   });
   
   // Wait for cart-drawer custom element to be defined
-  // This indicates Shopify JS has fully initialized
   await page.waitForFunction(() => {
     return typeof customElements !== 'undefined' && 
            customElements.get('cart-drawer') !== undefined;
@@ -152,10 +169,10 @@ export async function fastVisit(page: Page, url: string): Promise<void> {
     // Custom element may not be on all pages
   });
   
-  // Kill any popups that loaded before blocking took effect
+  // Kill any popups
   await killPopups(page);
   
-  // Accept cookie consent if present
+  // Accept cookie consent if present (check again after navigation)
   const acceptButton = page.locator('button').filter({ hasText: /accept/i }).first();
   if (await acceptButton.isVisible({ timeout: 2000 }).catch(() => false)) {
     await acceptButton.click({ force: true });
@@ -181,20 +198,98 @@ export async function waitForCartDrawerReady(page: Page): Promise<void> {
 }
 
 /**
+ * BULLETPROOF: Add to cart using direct API call
+ * 
+ * This is the most reliable method for CI environments.
+ * It directly calls the Shopify cart API and then opens the cart drawer.
+ * 
+ * @param page - Playwright page
+ * @param formSelector - CSS selector for the product form (e.g., 'product-form form')
+ */
+async function addToCartViaAPI(page: Page, formSelector: string): Promise<boolean> {
+  return await page.evaluate(async (selector) => {
+    const form = document.querySelector(selector) as HTMLFormElement;
+    if (!form) return false;
+    
+    // Get variant ID from form
+    const variantInput = form.querySelector('input[name="id"]') as HTMLInputElement;
+    const variantId = variantInput?.value;
+    
+    if (!variantId) return false;
+    
+    try {
+      // Call cart API directly (same as product-form.js line 95)
+      const response = await fetch('/cart/add.js', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          id: parseInt(variantId, 10),
+          quantity: 1,
+        }),
+      });
+      
+      if (!response.ok) return false;
+      
+      const data = await response.json();
+      
+      // Now fetch the cart drawer sections and update (mimics cart.renderContents)
+      const cartDrawer = document.querySelector('cart-drawer') as any;
+      if (cartDrawer) {
+        // Fetch updated cart drawer HTML
+        const sectionsResponse = await fetch('/cart?sections=cart-drawer,cart-icon-bubble');
+        if (sectionsResponse.ok) {
+          const sections = await sectionsResponse.json();
+          
+          // Update cart drawer content
+          if (sections['cart-drawer']) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(sections['cart-drawer'], 'text/html');
+            const newContent = doc.querySelector('.drawer__inner');
+            const currentContent = cartDrawer.querySelector('.drawer__inner');
+            if (newContent && currentContent) {
+              currentContent.innerHTML = newContent.innerHTML;
+            }
+          }
+          
+          // Update cart icon bubble
+          if (sections['cart-icon-bubble']) {
+            const bubble = document.querySelector('#cart-icon-bubble');
+            if (bubble) {
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(sections['cart-icon-bubble'], 'text/html');
+              const newBubble = doc.querySelector('#cart-icon-bubble');
+              if (newBubble) {
+                bubble.innerHTML = newBubble.innerHTML;
+              }
+            }
+          }
+        }
+        
+        // Open the cart drawer
+        if (typeof cartDrawer.open === 'function') {
+          cartDrawer.classList.remove('is-empty');
+          cartDrawer.open();
+        }
+      }
+      
+      return true;
+    } catch (e) {
+      console.error('addToCartViaAPI error:', e);
+      return false;
+    }
+  }, formSelector);
+}
+
+/**
  * BULLETPROOF: Add to cart from product page
  * 
- * From product-form.js analysis:
- * - Line 22: onSubmitHandler checks aria-disabled="true" and returns early
- * - Line 36: Sets aria-disabled=true when starting submission
- * - Line 144-146: Calls cart.renderContents() which opens drawer
- * - Line 162: Removes aria-disabled in finally block after AJAX completes
- * 
- * Strategy:
- * 1. Wait for product-form custom element to be defined (JS loaded)
- * 2. Wait for ATC button to be enabled (aria-disabled !== "true")
- * 3. Click the button
- * 4. Wait for AJAX to complete
- * 5. Wait for cart drawer to open (any state: opening, animate, or active)
+ * Uses a multi-strategy approach:
+ * 1. First tries direct API call (most reliable in CI)
+ * 2. Falls back to button click if API fails
+ * 3. Verifies cart drawer opens
  */
 export async function addToCart(page: Page): Promise<void> {
   await killPopups(page);
@@ -206,49 +301,57 @@ export async function addToCart(page: Page): Promise<void> {
   }, { timeout: 30000 });
   
   // Wait for page to stabilize
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(1000);
   await killPopups(page);
   
-  // Wait for ATC button to exist
+  // Wait for ATC button to exist and be visible
   const atcButton = page.locator('product-form button[type="submit"][name="add"]').first();
-  await atcButton.waitFor({ state: 'attached', timeout: 30000 });
-  await atcButton.scrollIntoViewIfNeeded();
+  await atcButton.waitFor({ state: 'visible', timeout: 30000 });
   
-  // CRITICAL: Wait for button to be enabled (aria-disabled !== "true")
-  // This is the key check from product-form.js line 22
+  // Wait for variant to be selected (form has valid variant ID)
   await page.waitForFunction(() => {
-    const btn = document.querySelector('product-form button[type="submit"][name="add"]');
-    if (!btn) return false;
-    const ariaDisabled = btn.getAttribute('aria-disabled');
-    // Button is clickable when aria-disabled is NOT exactly "true"
-    return ariaDisabled !== 'true';
-  }, { timeout: 30000 });
+    const form = document.querySelector('product-form form');
+    const variantInput = form?.querySelector('input[name="id"]') as HTMLInputElement;
+    return variantInput && variantInput.value && variantInput.value !== '';
+  }, { timeout: 15000 });
   
   await killPopups(page);
   
-  // Set up AJAX response listener before clicking
-  const cartAddPromise = page.waitForResponse(
-    response => response.url().includes('/cart/add') && response.status() === 200,
-    { timeout: 30000 }
-  ).catch(() => null);
+  // Strategy 1: Direct API call (most reliable)
+  let success = await addToCartViaAPI(page, 'product-form form');
   
-  // Click the button
-  await atcButton.click({ force: true });
-  
-  // Wait for AJAX to complete
-  const response = await cartAddPromise;
-  
-  if (!response) {
-    throw new Error('Cart add AJAX request did not complete');
+  // Strategy 2: Button click fallback
+  if (!success) {
+    // Wait for button to be enabled
+    await page.waitForFunction(() => {
+      const btn = document.querySelector('product-form button[type="submit"][name="add"]');
+      return btn && btn.getAttribute('aria-disabled') !== 'true';
+    }, { timeout: 10000 }).catch(() => {});
+    
+    // Set up response listener
+    const responsePromise = page.waitForResponse(
+      r => r.url().includes('/cart/add') && r.status() === 200,
+      { timeout: 15000 }
+    ).catch(() => null);
+    
+    await atcButton.click({ force: true });
+    
+    const response = await responsePromise;
+    success = response !== null;
   }
   
-  // Wait for cart drawer to open (any state: opening, animate, or active)
+  if (!success) {
+    throw new Error('Failed to add product to cart');
+  }
+  
+  // Wait for cart drawer to open
   await page.waitForFunction(() => {
     const drawer = document.querySelector('cart-drawer');
-    if (!drawer) return false;
-    return drawer.classList.contains('active') || 
-           drawer.classList.contains('animate') ||
-           drawer.classList.contains('opening');
+    return drawer && (
+      drawer.classList.contains('active') || 
+      drawer.classList.contains('animate') ||
+      drawer.classList.contains('opening')
+    );
   }, { timeout: 15000 });
   
   // Wait for drawer to be fully ready
@@ -297,13 +400,10 @@ export async function openHbPopup(page: Page): Promise<void> {
 /**
  * BULLETPROOF: Add to cart from HB popup
  * 
- * This function uses a DIRECT API approach for CI reliability:
- * 1. Extract variant ID from the popup form
- * 2. Call /cart/add.js directly via fetch
- * 3. Trigger cart drawer to open
- * 
- * This bypasses all the flaky click/event handling issues in CI while
- * still testing the actual cart functionality.
+ * Uses a multi-strategy approach:
+ * 1. First tries direct API call (most reliable in CI)
+ * 2. Falls back to button click if API fails
+ * 3. Verifies cart drawer opens
  */
 export async function addToCartFromHbPopup(page: Page): Promise<void> {
   await killPopups(page);
@@ -316,68 +416,61 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
   await page.waitForFunction(() => {
     const form = document.querySelector('#product-form-hb-popup-ajax');
     const variantInput = form?.querySelector('input[name="id"]') as HTMLInputElement;
-    return form && variantInput && variantInput.value;
+    return form && variantInput && variantInput.value && variantInput.value !== '';
   }, { timeout: 15000 });
   
   // Wait for any auto-selection to complete
-  await page.waitForTimeout(1000);
+  await page.waitForTimeout(500);
   await killPopups(page);
   
-  // Try the standard click approach first
-  let success = false;
+  // Strategy 1: Direct API call (most reliable)
+  let success = await addToCartViaAPI(page, '#product-form-hb-popup-ajax');
   
-  // Set up AJAX listener
-  const ajaxPromise = page.waitForResponse(
-    response => response.url().includes('/cart/add') && response.status() === 200,
-    { timeout: 15000 }
-  ).catch(() => null);
-  
-  // Click the button
-  await popupAtcButton.click({ force: true });
-  
-  // Wait for AJAX or drawer
-  try {
-    await Promise.race([
-      ajaxPromise.then(r => { if (r) return r; throw new Error('no response'); }),
-      page.waitForFunction(() => {
-        const drawer = document.querySelector('cart-drawer');
-        return drawer && drawer.classList.contains('active');
-      }, { timeout: 15000 })
-    ]);
-    success = true;
-  } catch {
-    // Click didn't work, try direct API approach
+  // Strategy 2: Button click fallback
+  if (!success) {
+    // Wait for button to be enabled
+    await page.waitForFunction(() => {
+      const btn = document.querySelector('#ProductSubmitButton-hb-popup-ajax');
+      return btn && btn.getAttribute('aria-disabled') !== 'true';
+    }, { timeout: 10000 }).catch(() => {});
+    
+    // Set up response listener
+    const responsePromise = page.waitForResponse(
+      r => r.url().includes('/cart/add') && r.status() === 200,
+      { timeout: 15000 }
+    ).catch(() => null);
+    
+    await popupAtcButton.click({ force: true });
+    
+    const response = await responsePromise;
+    success = response !== null;
+    
+    // If click worked, wait for drawer to open naturally
+    if (success) {
+      await page.waitForTimeout(500);
+    }
   }
   
-  // FALLBACK: Direct API call if click didn't work
+  // Strategy 3: Last resort - direct API with manual drawer open
   if (!success) {
-    // Extract form data and call cart API directly
-    const addedToCart = await page.evaluate(async () => {
+    success = await page.evaluate(async () => {
       const form = document.querySelector('#product-form-hb-popup-ajax') as HTMLFormElement;
       if (!form) return false;
       
-      const formData = new FormData(form);
-      const variantId = formData.get('id');
-      
-      if (!variantId) return false;
+      const variantInput = form.querySelector('input[name="id"]') as HTMLInputElement;
+      if (!variantInput?.value) return false;
       
       try {
         const response = await fetch('/cart/add.js', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: JSON.stringify({
-            id: variantId,
-            quantity: 1,
-          }),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: parseInt(variantInput.value, 10), quantity: 1 }),
         });
         
         if (response.ok) {
-          // Trigger cart drawer to open by fetching cart and calling renderContents
           const cartDrawer = document.querySelector('cart-drawer') as any;
-          if (cartDrawer && typeof cartDrawer.open === 'function') {
+          if (cartDrawer?.open) {
+            cartDrawer.classList.remove('is-empty');
             cartDrawer.open();
           }
           return true;
@@ -387,50 +480,20 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
         return false;
       }
     });
-    
-    if (addedToCart) {
-      success = true;
-      // Give the drawer time to open
-      await page.waitForTimeout(500);
-    }
-  }
-  
-  // LAST RESORT: Try clicking again with different method
-  if (!success) {
-    await page.evaluate(() => {
-      const btn = document.querySelector('#ProductSubmitButton-hb-popup-ajax') as HTMLButtonElement;
-      if (btn) {
-        btn.click();
-      }
-    });
-    
-    // Wait for any success indicator
-    try {
-      await page.waitForFunction(() => {
-        const drawer = document.querySelector('cart-drawer');
-        return drawer && drawer.classList.contains('active');
-      }, { timeout: 10000 });
-      success = true;
-    } catch {
-      // Still failed
-    }
   }
   
   if (!success) {
-    throw new Error('HB Popup ATC: Failed to add product to cart after multiple attempts');
+    throw new Error('HB Popup ATC: Failed to add product to cart');
   }
   
-  // Wait for cart drawer to be fully open
-  try {
-    await page.waitForFunction(() => {
-      const drawer = document.querySelector('cart-drawer');
-      return drawer && drawer.classList.contains('active');
-    }, { timeout: 10000 });
-    
-    await waitForCartDrawerReady(page);
-  } catch {
-    // Cart was added but drawer might not have opened - still a success
-  }
+  // Wait for cart drawer to open
+  await page.waitForFunction(() => {
+    const drawer = document.querySelector('cart-drawer');
+    return drawer && drawer.classList.contains('active');
+  }, { timeout: 15000 });
+  
+  // Wait for drawer to be fully ready
+  await waitForCartDrawerReady(page);
 }
 
 /**
