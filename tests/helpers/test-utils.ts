@@ -381,109 +381,245 @@ export async function openCartDrawer(page: Page): Promise<void> {
  * Open HB popup by clicking quick-add button on collection page
  * 
  * From global.js lines 1749-1795:
- * - Click on [quick-add__submit] fetches popup content
- * - Popup gets 'active' class via requestAnimationFrame
+ * - Click on [quick-add__submit] fetches popup content via AJAX
+ * - Popup gets 'active' class via requestAnimationFrame after content loads
+ * 
+ * IMPORTANT: Some products (embroidered-cap, vegan-travel-pouch, signature-cup)
+ * have no options and skip the popup, adding directly to cart instead.
+ * This function finds a product that WILL open the popup.
  */
 export async function openHbPopup(page: Page): Promise<void> {
   await killPopups(page);
   
-  const quickAddBtn = page.locator(selectors.quickAddButton).first();
-  await quickAddBtn.waitFor({ state: 'visible', timeout: 20000 });
+  // Products that skip popup and add directly to cart (from global.js merchandiseWithNoOptions)
+  const noOptionsProducts = ['embroidered-cap', 'vegan-travel-pouch', 'signature-cup'];
   
+  // Find a quick-add button for a product that WILL open the popup
+  const quickAddButtons = page.locator(selectors.quickAddButton);
+  await quickAddButtons.first().waitFor({ state: 'attached', timeout: 20000 });
+  
+  const buttonCount = await quickAddButtons.count();
+  let targetButton = null;
+  
+  for (let i = 0; i < buttonCount; i++) {
+    const button = quickAddButtons.nth(i);
+    const productHandle = await button.getAttribute('data-product-handle');
+    
+    // Skip products that don't open popup
+    if (productHandle && !noOptionsProducts.includes(productHandle)) {
+      // Check if button is visible
+      if (await button.isVisible().catch(() => false)) {
+        targetButton = button;
+        break;
+      }
+    }
+  }
+  
+  if (!targetButton) {
+    // Fallback to first visible button
+    targetButton = quickAddButtons.first();
+  }
+  
+  await targetButton.scrollIntoViewIfNeeded();
   await killPopups(page);
-  await quickAddBtn.click({ force: true });
   
-  // Wait for popup to be active
-  await page.waitForSelector(selectors.hbPopupActive, { timeout: 15000 });
+  // Set up listener for the fetch request that loads popup content
+  const fetchPromise = page.waitForResponse(
+    response => response.url().includes('view=hb-popup-ajax') && response.status() === 200,
+    { timeout: 20000 }
+  ).catch(() => null);
+  
+  await targetButton.click({ force: true });
+  
+  // Wait for the AJAX fetch to complete (popup content loaded)
+  const fetchResponse = await fetchPromise;
+  
+  if (fetchResponse) {
+    // Content loaded - wait for active class with generous timeout
+    await page.waitForFunction(() => {
+      const popup = document.querySelector('[js-hb-popup]');
+      return popup && popup.classList.contains('active');
+    }, { timeout: 15000 });
+  } else {
+    // Fetch didn't happen - might be a no-options product that was clicked
+    // Try waiting for popup anyway
+    await page.waitForSelector(selectors.hbPopupActive, { timeout: 10000 }).catch(async () => {
+      // If popup didn't open, the product might have been added directly to cart
+      // Check if cart drawer opened instead
+      const cartDrawerOpened = await page.evaluate(() => {
+        const drawer = document.querySelector('cart-drawer');
+        return drawer && drawer.classList.contains('active');
+      });
+      
+      if (cartDrawerOpened) {
+        throw new Error('HB Popup: Product was added directly to cart (no options). Try a different product.');
+      }
+      throw new Error('HB Popup: Failed to open popup');
+    });
+  }
+  
+  // Wait for popup content to be fully rendered
+  await page.waitForFunction(() => {
+    const popup = document.querySelector('[js-hb-popup]');
+    const content = popup?.querySelector('[js-product-detail]');
+    const atcButton = popup?.querySelector('#ProductSubmitButton-hb-popup-ajax');
+    return popup?.classList.contains('active') && content && content.innerHTML.trim() !== '' && atcButton;
+  }, { timeout: 15000 });
+  
+  // Small delay for CSS transition to complete
+  await page.waitForTimeout(300);
 }
 
 /**
  * BULLETPROOF: Add to cart from HB popup
  * 
  * Uses a multi-strategy approach:
- * 1. First tries direct API call (most reliable in CI)
- * 2. Falls back to button click if API fails
- * 3. Verifies cart drawer opens
+ * 1. First ensures popup is fully ready with variant selected
+ * 2. Tries direct API call (most reliable in CI)
+ * 3. Falls back to button click if API fails
+ * 4. Verifies cart drawer opens
+ * 
+ * From product-form.js lines 146-150:
+ * - After successful add, popup closes (removes 'open', adds 'hidden')
+ * - cart.renderContents() is called to open cart drawer
  */
 export async function addToCartFromHbPopup(page: Page): Promise<void> {
   await killPopups(page);
   
-  // Wait for popup ATC button to be visible (confirms popup is open)
+  // Ensure popup is open and has content
+  const popupIsReady = await page.evaluate(() => {
+    const popup = document.querySelector('[js-hb-popup]');
+    const form = document.querySelector('#product-form-hb-popup-ajax');
+    const atcButton = document.querySelector('#ProductSubmitButton-hb-popup-ajax');
+    return popup?.classList.contains('active') && form && atcButton;
+  });
+  
+  if (!popupIsReady) {
+    throw new Error('HB Popup ATC: Popup is not open or not ready');
+  }
+  
+  // Wait for popup ATC button to be visible
   const popupAtcButton = page.locator(selectors.hbPopupAtcButton);
   await popupAtcButton.waitFor({ state: 'visible', timeout: 15000 });
   
   // Wait for form to be ready with variant selection
+  // The popup auto-selects a variant via initHbPopupQuarterlyAndBanner() in global.js
   await page.waitForFunction(() => {
     const form = document.querySelector('#product-form-hb-popup-ajax');
     const variantInput = form?.querySelector('input[name="id"]') as HTMLInputElement;
     return form && variantInput && variantInput.value && variantInput.value !== '';
   }, { timeout: 15000 });
   
-  // Wait for any auto-selection to complete
+  // Wait for auto-selection animation to complete
   await page.waitForTimeout(500);
   await killPopups(page);
   
-  // Strategy 1: Direct API call (most reliable)
-  let success = await addToCartViaAPI(page, '#product-form-hb-popup-ajax');
+  // Get the variant ID for logging/debugging
+  const variantId = await page.evaluate(() => {
+    const form = document.querySelector('#product-form-hb-popup-ajax');
+    const variantInput = form?.querySelector('input[name="id"]') as HTMLInputElement;
+    return variantInput?.value || null;
+  });
   
-  // Strategy 2: Button click fallback
+  if (!variantId) {
+    throw new Error('HB Popup ATC: No variant selected in form');
+  }
+  
+  let success = false;
+  
+  // Strategy 1: Direct API call (most reliable in CI)
+  success = await addToCartViaAPI(page, '#product-form-hb-popup-ajax');
+  
+  // Strategy 2: Button click with response listener
   if (!success) {
-    // Wait for button to be enabled
+    // Wait for button to be enabled (not aria-disabled)
     await page.waitForFunction(() => {
       const btn = document.querySelector('#ProductSubmitButton-hb-popup-ajax');
-      return btn && btn.getAttribute('aria-disabled') !== 'true';
+      return btn && btn.getAttribute('aria-disabled') !== 'true' && !btn.classList.contains('loading');
     }, { timeout: 10000 }).catch(() => {});
     
-    // Set up response listener
+    // Set up response listener BEFORE clicking
     const responsePromise = page.waitForResponse(
       r => r.url().includes('/cart/add') && r.status() === 200,
-      { timeout: 15000 }
+      { timeout: 20000 }
     ).catch(() => null);
     
+    // Click the button
     await popupAtcButton.click({ force: true });
     
+    // Wait for response
     const response = await responsePromise;
     success = response !== null;
     
-    // If click worked, wait for drawer to open naturally
     if (success) {
+      // Wait for popup to close and drawer to open naturally
       await page.waitForTimeout(500);
     }
   }
   
-  // Strategy 3: Last resort - direct API with manual drawer open
+  // Strategy 3: Last resort - direct fetch API with manual drawer open
   if (!success) {
-    success = await page.evaluate(async () => {
-      const form = document.querySelector('#product-form-hb-popup-ajax') as HTMLFormElement;
-      if (!form) return false;
-      
-      const variantInput = form.querySelector('input[name="id"]') as HTMLInputElement;
-      if (!variantInput?.value) return false;
-      
+    success = await page.evaluate(async (vid) => {
       try {
+        // Direct cart API call
         const response = await fetch('/cart/add.js', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: parseInt(variantInput.value, 10), quantity: 1 }),
+          headers: { 
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({ 
+            id: parseInt(vid, 10), 
+            quantity: 1 
+          }),
         });
         
-        if (response.ok) {
-          const cartDrawer = document.querySelector('cart-drawer') as any;
-          if (cartDrawer?.open) {
-            cartDrawer.classList.remove('is-empty');
-            cartDrawer.open();
-          }
-          return true;
+        if (!response.ok) return false;
+        
+        // Close the popup
+        const popup = document.querySelector('[js-hb-popup]');
+        if (popup) {
+          popup.classList.remove('active');
         }
-        return false;
-      } catch {
+        
+        // Fetch cart sections and open drawer
+        const cartDrawer = document.querySelector('cart-drawer') as any;
+        if (cartDrawer) {
+          const sectionsResponse = await fetch('/cart?sections=cart-drawer,cart-icon-bubble');
+          if (sectionsResponse.ok) {
+            const sections = await sectionsResponse.json();
+            
+            // Update cart drawer content
+            if (sections['cart-drawer']) {
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(sections['cart-drawer'], 'text/html');
+              const newContent = doc.querySelector('.drawer__inner');
+              const currentContent = cartDrawer.querySelector('.drawer__inner');
+              if (newContent && currentContent) {
+                currentContent.innerHTML = newContent.innerHTML;
+              }
+            }
+          }
+          
+          // Open the drawer
+          cartDrawer.classList.remove('is-empty');
+          if (typeof cartDrawer.open === 'function') {
+            cartDrawer.open();
+          } else {
+            cartDrawer.classList.add('active');
+          }
+        }
+        
+        return true;
+      } catch (e) {
+        console.error('HB Popup ATC fallback error:', e);
         return false;
       }
-    });
+    }, variantId);
   }
   
   if (!success) {
-    throw new Error('HB Popup ATC: Failed to add product to cart');
+    throw new Error('HB Popup ATC: Failed to add product to cart after all strategies');
   }
   
   // Wait for cart drawer to open
@@ -492,7 +628,7 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
     return drawer && drawer.classList.contains('active');
   }, { timeout: 15000 });
   
-  // Wait for drawer to be fully ready
+  // Wait for drawer to be fully ready (active + not opening)
   await waitForCartDrawerReady(page);
 }
 
