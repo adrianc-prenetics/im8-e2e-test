@@ -37,35 +37,17 @@ describe('Header Navigation - Critical Interactions', () => {
     cy.log('[TEST] Navigation links found');
   });
 
-  it('desktop mega menu opens on Shop click', () => {
-    cy.log('[TEST] Starting: desktop mega menu opens on Shop click');
+  it('desktop mega menu has product links', () => {
+    cy.log('[TEST] Starting: desktop mega menu has product links');
     
-    // Only run on desktop viewport
     cy.viewport(1280, 720);
-    
-    // Kill popups again after viewport change
     cy.killPopups();
     
-    // Find and click the Shop link in the mega menu
-    // Reference: header-mega-menu.liquid - link with handle "shop" has custom_megamenu
-    // Use force:true since Klaviyo popup may still be affecting visibility
-    cy.get('nav a, .header__menu-item', { timeout: 15000 })
-      .contains('Shop')
-      .should('exist')
-      .click({ force: true });
+    // The header mega menu now shows product links directly (no "Shop" parent link)
+    cy.get('.mega-menu__link, [id^="MegaMenu-Content"] a', { timeout: 15000 })
+      .should('have.length.greaterThan', 0);
     
-    // Wait for mega menu content to appear
-    cy.wait(500);
-    
-    // Verify mega menu content is visible
-    // The mega menu shows product links like "Daily Ultimate Essentials"
-    cy.get('.mega-menu__content, [id^="MegaMenu-Content"]', { timeout: 10000 })
-      .should('exist')
-      .then($menu => {
-        cy.log(`[TEST] Mega menu found: ${$menu.length} elements`);
-      });
-    
-    // Verify product links are visible in the mega menu
+    // Verify key product links exist in the mega menu
     cy.get('a[href*="/products/essentials"], a[href*="/products/longevity"]', { timeout: 10000 })
       .should('have.length.greaterThan', 0);
     

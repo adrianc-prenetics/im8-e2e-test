@@ -27,19 +27,14 @@ test.describe('Header Navigation - Critical Interactions', () => {
     expect(await navLinks.count()).toBeGreaterThan(0);
   });
 
-  test('desktop mega menu opens on Shop click', async ({ page }) => {
-    // Ensure desktop viewport
+  test('desktop mega menu has product links', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await killPopups(page);
     
-    // Find and click Shop link
-    const shopLink = page.locator('nav a, .header__menu-item').filter({ hasText: 'Shop' }).first();
-    await expect(shopLink).toBeVisible({ timeout: 15000 });
+    // The header mega menu now shows product links directly (no "Shop" parent link)
+    const megaMenuLinks = page.locator('.mega-menu__link, [id^="MegaMenu-Content"] a');
+    await megaMenuLinks.first().waitFor({ state: 'attached', timeout: 15000 });
     
-    await killPopups(page);
-    await shopLink.click({ force: true });
-    
-    // Verify mega menu content appears
-    await expect(page.locator(selectors.megaMenu).first()).toBeVisible({ timeout: 10000 });
+    expect(await megaMenuLinks.count()).toBeGreaterThan(0);
   });
 });

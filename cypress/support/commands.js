@@ -1,12 +1,13 @@
 // Minimal, fast custom commands
 
-// Remove all popups via JavaScript - using only valid native selectors
+// Remove all popups that interfere with testing:
+// - Klaviyo email popups
+// - Alia "Try Your Luck" scratch card popup (alia-prod.com)
+// - Generic modals
 // NOTE: Excludes HB popup (.hb_popup) and cart drawer which are needed for testing
 Cypress.Commands.add('killPopups', () => {
   cy.window().then((win) => {
     try {
-      // CRITICAL: Fix body if Klaviyo has hidden it
-      // Klaviyo adds 'klaviyo-prevent-body-scrolling' class which sets display:none
       const body = win.document.body;
       if (body) {
         body.classList.remove('klaviyo-prevent-body-scrolling');
@@ -14,10 +15,13 @@ Cypress.Commands.add('killPopups', () => {
         body.style.overflow = '';
       }
       
+      // Remove Alia popup (scratch card / "Try Your Luck" gamification)
+      win.document.querySelectorAll('[id^="alia-root"]').forEach(el => el.remove());
+      
       const popupSelectors = [
         '[class*="klaviyo"]',
         '.needsclick',
-        '.kl-private-reset-css-Xuajs1' // Klaviyo specific class
+        '.kl-private-reset-css-Xuajs1'
       ];
       
       popupSelectors.forEach(selector => {
@@ -32,8 +36,6 @@ Cypress.Commands.add('killPopups', () => {
         }
       });
       
-      // Hide generic modals but NOT the HB popup or cart drawer
-      // These are needed for e2e testing
       const genericModalSelectors = [
         '[role="dialog"]:not(.cart-drawer):not(.hb_popup)',
         '[aria-modal="true"]:not(.drawer__inner)'
@@ -43,7 +45,6 @@ Cypress.Commands.add('killPopups', () => {
         try {
           const elements = win.document.querySelectorAll(selector);
           elements.forEach(el => {
-            // Skip if it's part of cart drawer or HB popup
             if (el.closest('.cart-drawer') || el.closest('.hb_popup') || el.closest('[js-hb-popup]')) {
               return;
             }
@@ -52,6 +53,18 @@ Cypress.Commands.add('killPopups', () => {
           });
         } catch (e) {
           // Ignore selector errors
+        }
+      });
+      
+      // Remove any remaining high-z-index overlays that aren't ours
+      win.document.querySelectorAll('div').forEach(el => {
+        const z = parseInt(win.getComputedStyle(el).zIndex);
+        if (z > 99999 && 
+            !el.closest('cart-drawer') && 
+            !el.closest('[js-hb-popup]') &&
+            !el.closest('#CartDrawer') &&
+            !el.id?.startsWith('shopify-section')) {
+          el.remove();
         }
       });
     } catch (e) {
@@ -77,6 +90,10 @@ Cypress.Commands.add('fastVisit', (url) => {
   // Set US market cookies
   cy.setCookie('localization', 'US', { domain: 'im8health.com' });
   cy.setCookie('cart_currency', 'USD', { domain: 'im8health.com' });
+  
+  // Block Alia popup script at network level
+  cy.intercept('**/alia-prod.com/**', { statusCode: 200, body: '' });
+  cy.intercept('**/*alia*launcher*', { statusCode: 200, body: '' });
   
   // For product pages, visit homepage first to establish market
   if (isProductPage) {

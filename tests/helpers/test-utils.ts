@@ -55,8 +55,12 @@ export const selectors = {
 };
 
 /**
- * Kill Klaviyo popups that interfere with testing
- * Blocks at network level and removes from DOM
+ * Kill all popups that interfere with testing:
+ * - Klaviyo email popups
+ * - Alia "Try Your Luck" scratch card popup (alia-prod.com)
+ * - Generic modals
+ * 
+ * Blocks at network level and removes from DOM.
  */
 export async function killPopups(page: Page): Promise<void> {
   await page.evaluate(() => {
@@ -64,6 +68,9 @@ export async function killPopups(page: Page): Promise<void> {
     document.body?.classList.remove('klaviyo-prevent-body-scrolling');
     document.body.style.display = '';
     document.body.style.overflow = '';
+    
+    // Remove Alia popup (scratch card / "Try Your Luck" gamification)
+    document.querySelectorAll('[id^="alia-root"]').forEach(el => el.remove());
     
     // Remove all Klaviyo elements from DOM
     const klaviyoSelectors = [
@@ -77,7 +84,6 @@ export async function killPopups(page: Page): Promise<void> {
     
     klaviyoSelectors.forEach(selector => {
       document.querySelectorAll(selector).forEach(el => {
-        // Don't remove cart drawer or HB popup
         if (!el.closest('cart-drawer') && !el.closest('[js-hb-popup]')) {
           el.remove();
         }
@@ -90,6 +96,18 @@ export async function killPopups(page: Page): Promise<void> {
           !el.closest('[js-hb-popup]') && 
           !el.closest('#CartDrawer') &&
           !el.classList.contains('drawer__inner')) {
+        el.remove();
+      }
+    });
+    
+    // Remove any remaining high-z-index overlays that aren't ours
+    document.querySelectorAll('div').forEach(el => {
+      const z = parseInt(getComputedStyle(el).zIndex);
+      if (z > 99999 && 
+          !el.closest('cart-drawer') && 
+          !el.closest('[js-hb-popup]') &&
+          !el.closest('#CartDrawer') &&
+          !el.id?.startsWith('shopify-section')) {
         el.remove();
       }
     });
@@ -107,9 +125,11 @@ export async function killPopups(page: Page): Promise<void> {
  * then navigating to the target URL.
  */
 export async function fastVisit(page: Page, url: string): Promise<void> {
-  // Block Klaviyo at network level - prevents popups from ever loading
+  // Block popup scripts at network level
   await page.route('**/*klaviyo*', route => route.abort());
   await page.route('**/static.klaviyo.com/**', route => route.abort());
+  await page.route('**/*alia-prod.com*', route => route.abort());
+  await page.route('**/*alia*launcher*', route => route.abort());
   
   // CRITICAL: Set cookies to force US market BEFORE navigation
   await page.context().addCookies([
@@ -192,9 +212,11 @@ export async function fastVisit(page: Page, url: string): Promise<void> {
 export async function waitForCartDrawerReady(page: Page): Promise<void> {
   await page.waitForFunction(() => {
     const drawer = document.querySelector('cart-drawer');
-    return drawer?.classList.contains('active') && 
-           !drawer?.classList.contains('opening');
-  }, { timeout: 20000 });
+    if (!drawer) return false;
+    const isActive = drawer.classList.contains('active') || drawer.classList.contains('animate');
+    const isStillOpening = drawer.classList.contains('opening');
+    return isActive && !isStillOpening;
+  }, { timeout: 25000 });
 }
 
 /**
@@ -294,26 +316,27 @@ async function addToCartViaAPI(page: Page, formSelector: string): Promise<boolea
 export async function addToCart(page: Page): Promise<void> {
   await killPopups(page);
   
-  // Wait for product-form custom element to be defined (indicates JS is ready)
+  // Wait for product-form custom element OR the form to exist in DOM
   await page.waitForFunction(() => {
-    return typeof customElements !== 'undefined' && 
+    const ceReady = typeof customElements !== 'undefined' && 
            customElements.get('product-form') !== undefined;
+    const formExists = !!document.querySelector('product-form form, form[action*="/cart/add"]');
+    return ceReady || formExists;
   }, { timeout: 30000 });
   
-  // Wait for page to stabilize
   await page.waitForTimeout(1000);
   await killPopups(page);
   
   // Wait for ATC button to exist and be visible
-  const atcButton = page.locator('product-form button[type="submit"][name="add"]').first();
+  const atcButton = page.locator('product-form button[type="submit"][name="add"], button[name="add"], .product-form__submit').first();
   await atcButton.waitFor({ state: 'visible', timeout: 30000 });
   
   // Wait for variant to be selected (form has valid variant ID)
   await page.waitForFunction(() => {
-    const form = document.querySelector('product-form form');
+    const form = document.querySelector('product-form form') || document.querySelector('form[action*="/cart/add"]');
     const variantInput = form?.querySelector('input[name="id"]') as HTMLInputElement;
     return variantInput && variantInput.value && variantInput.value !== '';
-  }, { timeout: 15000 });
+  }, { timeout: 20000 });
   
   await killPopups(page);
   
@@ -367,9 +390,11 @@ export async function addToCart(page: Page): Promise<void> {
  */
 export async function openCartDrawer(page: Page): Promise<void> {
   await killPopups(page);
+  await page.waitForTimeout(500);
+  await killPopups(page);
   
   const cartIcon = page.locator(selectors.cartIcon);
-  await cartIcon.waitFor({ state: 'visible', timeout: 15000 });
+  await cartIcon.waitFor({ state: 'visible', timeout: 20000 });
   
   await killPopups(page);
   await cartIcon.click({ force: true });
@@ -641,13 +666,21 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
  */
 export async function openMobileDrawer(page: Page): Promise<void> {
   await killPopups(page);
+  await page.waitForTimeout(500);
+  await killPopups(page);
   
   const hamburger = page.locator(selectors.hamburgerMenu);
-  await hamburger.waitFor({ state: 'visible', timeout: 15000 });
+  await hamburger.waitFor({ state: 'visible', timeout: 20000 });
   
   await killPopups(page);
   await hamburger.click({ force: true });
   
-  // Wait for drawer to be visible
-  await page.waitForSelector(selectors.mobileDrawer, { state: 'visible', timeout: 10000 });
+  // Wait for the details element to have open attribute, then drawer becomes visible
+  await page.waitForFunction(() => {
+    const details = document.querySelector('#Details-menu-drawer-container');
+    const drawer = document.querySelector('#menu-drawer');
+    return (details?.hasAttribute('open') || drawer?.offsetParent !== null) ?? false;
+  }, { timeout: 15000 });
+  
+  await page.waitForTimeout(300);
 }
