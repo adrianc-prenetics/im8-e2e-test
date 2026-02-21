@@ -11,15 +11,17 @@
 describe('Header Navigation - Critical Interactions', () => {
   beforeEach(() => {
     cy.fastVisit('/');
-    // Kill popups again to ensure body is visible (Klaviyo may have re-triggered)
+    cy.killPopups();
+    cy.wait(500);
     cy.killPopups();
   });
 
   it('header exists with logo', () => {
     cy.log('[TEST] Starting: header exists with logo');
+    cy.killPopups();
     
-    // Header uses banner role per live site inspection
-    cy.get('header, [role="banner"], .header', { timeout: 15000 }).should('exist');
+    // Header element from theme: <header class="header ..."> wrapped in <sticky-header>
+    cy.get('header.header, sticky-header header, [role="banner"], .header-wrapper header', { timeout: 15000 }).should('exist');
     
     // Logo link to homepage
     cy.get('a[href="/"]', { timeout: 10000 }).should('exist');
