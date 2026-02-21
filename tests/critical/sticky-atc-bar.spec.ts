@@ -16,7 +16,7 @@ test.describe('Sticky ATC Bar - Critical Interactions', () => {
     await page.waitForFunction(() => {
       const ceReady = typeof customElements !== 'undefined' && 
              customElements.get('product-form') !== undefined;
-      const formExists = !!document.querySelector('product-form form, form[action*="/cart/add"]');
+      const formExists = !!document.querySelector('product-form form, form[data-type="add-to-cart-form"], form.test-product-form');
       return ceReady || formExists;
     }, { timeout: 30000 });
     

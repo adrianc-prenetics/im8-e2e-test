@@ -128,8 +128,8 @@ export async function fastVisit(page: Page, url: string): Promise<void> {
   // Block popup scripts at network level
   await page.route('**/*klaviyo*', route => route.abort());
   await page.route('**/static.klaviyo.com/**', route => route.abort());
-  await page.route('**/*alia-prod.com*', route => route.abort());
-  await page.route('**/*alia*launcher*', route => route.abort());
+  await page.route('**/*.alia-prod.com/**', route => route.abort());
+  await page.route(/alia-prod\.com/, route => route.abort());
   
   // CRITICAL: Set cookies to force US market BEFORE navigation
   await page.context().addCookies([
@@ -320,7 +320,7 @@ export async function addToCart(page: Page): Promise<void> {
   await page.waitForFunction(() => {
     const ceReady = typeof customElements !== 'undefined' && 
            customElements.get('product-form') !== undefined;
-    const formExists = !!document.querySelector('product-form form, form[action*="/cart/add"]');
+    const formExists = !!document.querySelector('product-form form, form[data-type="add-to-cart-form"], form.test-product-form');
     return ceReady || formExists;
   }, { timeout: 30000 });
   
@@ -333,7 +333,7 @@ export async function addToCart(page: Page): Promise<void> {
   
   // Wait for variant to be selected (form has valid variant ID)
   await page.waitForFunction(() => {
-    const form = document.querySelector('product-form form') || document.querySelector('form[action*="/cart/add"]');
+    const form = document.querySelector('product-form form') || document.querySelector('form[data-type="add-to-cart-form"]');
     const variantInput = form?.querySelector('input[name="id"]') as HTMLInputElement;
     return variantInput && variantInput.value && variantInput.value !== '';
   }, { timeout: 20000 });
@@ -679,7 +679,7 @@ export async function openMobileDrawer(page: Page): Promise<void> {
   await page.waitForFunction(() => {
     const details = document.querySelector('#Details-menu-drawer-container');
     const drawer = document.querySelector('#menu-drawer');
-    return (details?.hasAttribute('open') || drawer?.offsetParent !== null) ?? false;
+    return (details?.hasAttribute('open') || (drawer as HTMLElement)?.offsetParent !== null) ?? false;
   }, { timeout: 15000 });
   
   await page.waitForTimeout(300);

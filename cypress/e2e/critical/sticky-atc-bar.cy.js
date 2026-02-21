@@ -9,7 +9,7 @@ describe('Sticky ATC Bar - Critical Interactions', () => {
       return new Cypress.Promise((resolve) => {
         const check = () => {
           const ceReady = win.customElements && win.customElements.get('product-form');
-          const formExists = win.document.querySelector('product-form form, form[action*="/cart/add"]');
+          const formExists = win.document.querySelector('product-form form, form[data-type="add-to-cart-form"], form.test-product-form');
           if (ceReady || formExists) {
             resolve();
           } else {
