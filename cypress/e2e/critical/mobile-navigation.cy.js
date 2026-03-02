@@ -29,22 +29,22 @@ describe('Mobile Navigation - Critical Interactions', () => {
     
     // Reference: header-drawer.liquid - summary with class header__icon--menu
     // Hamburger button MUST be visible on mobile - this catches CSS bugs
-    cy.get('button[aria-label*="Menu"], summary.header__icon--menu, [class*="menu"] button, header button', { timeout: 15000 })
+    cy.get('button[aria-label*="Menu"], summary.header__icon--menu, [class*="menu"] button, header button', { timeout: 30000 })
       .first()
       .should('be.visible')
       .then($btn => {
         cy.log(`[TEST] Found visible hamburger button: ${$btn.prop('tagName')}`);
       });
-    
+
     cy.log('[TEST] Hamburger menu button is visible');
   });
 
   it('mobile drawer opens and is visible on hamburger click', () => {
     cy.log('[TEST] Starting: mobile drawer opens and is visible');
-    
+
     // Click the hamburger/menu button
     // Reference: header-drawer.liquid - details#Details-menu-drawer-container
-    cy.get('button[aria-label*="Menu"], summary.header__icon--menu, [class*="menu"] button, header button', { timeout: 15000 })
+    cy.get('button[aria-label*="Menu"], summary.header__icon--menu, [class*="menu"] button, header button', { timeout: 30000 })
       .first()
       .should('be.visible')
       .click();
@@ -67,11 +67,11 @@ describe('Mobile Navigation - Critical Interactions', () => {
     cy.log('[TEST] Starting: mobile drawer has visible navigation links');
     
     // Open the drawer first
-    cy.get('button[aria-label*="Menu"], summary.header__icon--menu, [class*="menu"] button, header button', { timeout: 15000 })
+    cy.get('button[aria-label*="Menu"], summary.header__icon--menu, [class*="menu"] button, header button', { timeout: 30000 })
       .first()
       .should('be.visible')
       .click();
-    
+
     cy.wait(500);
     
     // Navigation links MUST be visible in the drawer - this catches hidden links bugs

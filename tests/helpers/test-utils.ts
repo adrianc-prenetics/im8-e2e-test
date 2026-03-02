@@ -167,9 +167,8 @@ export async function fastVisit(page: Page, url: string): Promise<void> {
       await acceptButton.click({ force: true });
     }
 
-    // Now navigate to the actual product page — use domcontentloaded for speed
-    // (don't wait for all images/scripts to finish loading)
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    // Now navigate to the actual product page — wait for full load so JS executes
+    await page.goto(url, { waitUntil: 'load', timeout: 60000 });
   } else {
     // For non-product pages, navigate directly
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });

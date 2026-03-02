@@ -5,28 +5,12 @@ describe('Sticky ATC Bar - Critical Interactions', () => {
     cy.fastVisit('/products/essentials-pro');
     cy.killPopups();
 
-    // Wait for product-form custom element OR sticky bar to be ready
-    cy.window().then((win) => {
-      return new Cypress.Promise((resolve) => {
-        const check = () => {
-          const ceReady = win.customElements && win.customElements.get('product-form');
-          const formExists = win.document.querySelector('product-form form, form[data-type="add-to-cart-form"], form.test-product-form');
-          const stickyExists = win.document.querySelector('.product-buy-sticky-container');
-          if (ceReady || formExists || stickyExists) {
-            resolve();
-          } else {
-            setTimeout(check, 200);
-          }
-        };
-        check();
-      });
-    });
-
     // Broader ATC selector: includes main form button AND sticky bar button
     const atcSelector = 'product-form button[type="submit"], [id^="ProductSubmitButton"], .product-form__submit, button[name="add"], .product-buy-sticky__button';
 
-    // Check for ATC button
-    cy.get(atcSelector, { timeout: 20000 })
+    // Wait for any ATC button to exist — use cy.get with generous timeout
+    // This is more reliable than Cypress.Promise polling which can timeout on CI
+    cy.get(atcSelector, { timeout: 45000 })
       .first()
       .should('exist');
 

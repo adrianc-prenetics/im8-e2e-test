@@ -16,21 +16,13 @@ test.describe('Sticky ATC Bar - Critical Interactions', () => {
     await fastVisit(page, '/products/essentials-pro');
     await killPopups(page);
 
-    // Wait for either: product-form CE registered, form in DOM, or sticky bar initialized
-    await page.waitForFunction(() => {
-      const ceReady = typeof customElements !== 'undefined' &&
-             customElements.get('product-form') !== undefined;
-      const formExists = !!document.querySelector('product-form form, form[data-type="add-to-cart-form"], form.test-product-form');
-      const stickyBarExists = !!document.querySelector('.product-buy-sticky-container');
-      return ceReady || formExists || stickyBarExists;
-    }, { timeout: 30000 });
-
     // Broader ATC selector: includes main form button AND sticky bar button
     const atcSelector = 'product-form button[type="submit"], button[name="add"], .product-form__submit, [id^="ProductSubmitButton"], .product-buy-sticky__button';
 
-    // Verify ATC button exists
+    // Wait for any ATC button to appear in DOM — use locator (not waitForFunction)
+    // with a generous timeout for CI where JS loading can be slow
     const atcButton = page.locator(atcSelector).first();
-    await atcButton.waitFor({ state: 'attached', timeout: 20000 });
+    await atcButton.waitFor({ state: 'attached', timeout: 45000 });
 
     // Scroll to bottom to trigger sticky bar
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));

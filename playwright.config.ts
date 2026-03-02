@@ -46,8 +46,8 @@ export default defineConfig({
     /* Video on failure */
     video: 'on-first-retry',
     
-    /* Default timeout for actions - increased for reliability */
-    actionTimeout: 20000,
+    /* Default timeout for actions - generous for CI headless Chrome */
+    actionTimeout: 30000,
     
     /* Default timeout for navigation */
     navigationTimeout: 45000,

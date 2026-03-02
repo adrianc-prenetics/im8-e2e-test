@@ -91,8 +91,12 @@ Cypress.Commands.add('fastVisit', (url) => {
   cy.setCookie('localization', 'US', { domain: 'im8health.com' });
   cy.setCookie('cart_currency', 'USD', { domain: 'im8health.com' });
   
-  // Block Alia popup script at network level
+  // Block heavy third-party scripts at network level (matches Playwright fastVisit)
   cy.intercept(/alia-prod\.com/, { statusCode: 200, body: '' });
+  cy.intercept(/klaviyo/, { statusCode: 200, body: '' });
+  cy.intercept(/static\.klaviyo\.com/, { statusCode: 200, body: '' });
+  cy.intercept(/gorgias/, { statusCode: 200, body: '' });
+  cy.intercept(/loox/, { statusCode: 200, body: '' });
   
   // For product pages, visit homepage first to establish market
   if (isProductPage) {
