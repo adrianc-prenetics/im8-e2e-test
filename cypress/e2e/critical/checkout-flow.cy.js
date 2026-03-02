@@ -37,7 +37,7 @@ describe('Checkout Flow - Critical Interactions', () => {
     cy.log('[TEST] Starting: can navigate to checkout from cart drawer');
     
     // Step 1: Add item to cart - drawer auto-opens
-    cy.fastVisit('/products/essentials');
+    cy.fastVisit('/products/essentials-pro');
     cy.forceAddToCart();
     
     // Step 2: BULLETPROOF wait for cart drawer to be fully ready

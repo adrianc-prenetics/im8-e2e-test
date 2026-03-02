@@ -1,7 +1,7 @@
 describe('Add to Cart - Critical Interactions', () => {
   beforeEach(() => {
     cy.log('[TEST] Starting test - visiting product page');
-    cy.fastVisit('/products/essentials');
+    cy.fastVisit('/products/essentials-pro');
   });
 
   it('product page loads with ATC button', () => {

@@ -79,7 +79,7 @@ describe('Cart Drawer - Critical Interactions', () => {
     cy.log('[TEST] Starting: cart drawer has checkout button');
     
     // First add an item to cart
-    cy.fastVisit('/products/essentials');
+    cy.fastVisit('/products/essentials-pro');
     cy.forceAddToCart();
     
     // BULLETPROOF: Wait for cart drawer to be fully ready
@@ -95,7 +95,7 @@ describe('Cart Drawer - Critical Interactions', () => {
 
   it('can add item to cart from product page', () => {
     cy.log('[TEST] Starting: can add item to cart from product page');
-    cy.fastVisit('/products/essentials');
+    cy.fastVisit('/products/essentials-pro');
     cy.forceAddToCart();
     
     // BULLETPROOF: Wait for cart drawer to open (confirms ATC succeeded)

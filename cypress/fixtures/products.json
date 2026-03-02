@@ -1,8 +1,8 @@
 {
   "testProduct": {
-    "handle": "essentials",
-    "url": "/products/essentials",
-    "name": "Daily Ultimate Essentials"
+    "handle": "essentials-pro",
+    "url": "/products/essentials-pro",
+    "name": "Daily Ultimate Essentials Pro"
   },
   "collections": {
     "all": "/collections/all",

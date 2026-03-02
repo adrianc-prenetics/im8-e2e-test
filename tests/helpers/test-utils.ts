@@ -117,12 +117,15 @@ export async function killPopups(page: Page): Promise<void> {
 /**
  * Fast page visit with Klaviyo blocking at network level
  * Waits for Shopify JS to initialize (cart-drawer custom element defined)
- * 
+ *
  * CRITICAL: Forces US market to ensure products are available.
  * Some EU markets have been disabled and show empty collections.
- * 
+ *
  * The market is set by first visiting the homepage to establish cookies,
  * then navigating to the target URL.
+ *
+ * NOTE: Use canonical product URLs to avoid redirects that waste CI time.
+ * e.g. /products/essentials-pro instead of /products/essentials
  */
 export async function fastVisit(page: Page, url: string): Promise<void> {
   // Block popup scripts at network level
@@ -130,7 +133,10 @@ export async function fastVisit(page: Page, url: string): Promise<void> {
   await page.route('**/static.klaviyo.com/**', route => route.abort());
   await page.route('**/*.alia-prod.com/**', route => route.abort());
   await page.route(/alia-prod\.com/, route => route.abort());
-  
+  // Also block heavy third-party scripts that slow down CI
+  await page.route('**/*gorgias*', route => route.abort());
+  await page.route('**/*loox*', route => route.abort());
+
   // CRITICAL: Set cookies to force US market BEFORE navigation
   await page.context().addCookies([
     {
@@ -146,31 +152,32 @@ export async function fastVisit(page: Page, url: string): Promise<void> {
       path: '/',
     },
   ]);
-  
+
   // For product pages, we need to establish the market first
   // by visiting the homepage, then navigating to the product
   const isProductPage = url.includes('/products/');
-  
+
   if (isProductPage) {
     // First visit homepage to establish market
     await page.goto('https://im8health.com/', { waitUntil: 'domcontentloaded', timeout: 30000 });
-    
+
     // Accept cookie consent if present
     const acceptButton = page.locator('button').filter({ hasText: /accept/i }).first();
     if (await acceptButton.isVisible({ timeout: 2000 }).catch(() => false)) {
       await acceptButton.click({ force: true });
     }
-    
-    // Now navigate to the actual product page
-    await page.goto(url, { waitUntil: 'load', timeout: 60000 });
+
+    // Now navigate to the actual product page — use domcontentloaded for speed
+    // (don't wait for all images/scripts to finish loading)
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
   } else {
     // For non-product pages, navigate directly
-    await page.goto(url, { waitUntil: 'load', timeout: 60000 });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
   }
-  
+
   // Wait for body
   await page.waitForSelector('body', { timeout: 15000 });
-  
+
   // Force US market via JavaScript
   await page.evaluate(() => {
     try {
@@ -180,24 +187,26 @@ export async function fastVisit(page: Page, url: string): Promise<void> {
       // localStorage may not be available
     }
   });
-  
-  // Wait for cart-drawer custom element to be defined
+
+  // Wait for Shopify JS to initialize — check for cart-drawer or any custom element
+  // Use a generous timeout but don't fail the test if CE isn't on this page
   await page.waitForFunction(() => {
-    return typeof customElements !== 'undefined' && 
-           customElements.get('cart-drawer') !== undefined;
-  }, { timeout: 20000 }).catch(() => {
+    return typeof customElements !== 'undefined' &&
+           (customElements.get('cart-drawer') !== undefined ||
+            customElements.get('product-form') !== undefined);
+  }, { timeout: 30000 }).catch(() => {
     // Custom element may not be on all pages
   });
-  
+
   // Kill any popups
   await killPopups(page);
-  
+
   // Accept cookie consent if present (check again after navigation)
   const acceptButton = page.locator('button').filter({ hasText: /accept/i }).first();
   if (await acceptButton.isVisible({ timeout: 2000 }).catch(() => false)) {
     await acceptButton.click({ force: true });
   }
-  
+
   await killPopups(page);
 }
 
@@ -404,85 +413,110 @@ export async function openCartDrawer(page: Page): Promise<void> {
 
 /**
  * Open HB popup by clicking quick-add button on collection page
- * 
- * From global.js lines 1749-1795:
+ *
+ * From global.js lines 1780-1840:
  * - Click on [quick-add__submit] fetches popup content via AJAX
  * - Popup gets 'active' class via requestAnimationFrame after content loads
- * 
+ *
  * IMPORTANT: Some products (embroidered-cap, vegan-travel-pouch, signature-cup)
  * have no options and skip the popup, adding directly to cart instead.
- * This function finds a product that WILL open the popup.
+ * This function finds a product that WILL open the popup, and retries with
+ * a different product if the first attempt fails.
  */
 export async function openHbPopup(page: Page): Promise<void> {
   await killPopups(page);
-  
+
   // Products that skip popup and add directly to cart (from global.js merchandiseWithNoOptions)
   const noOptionsProducts = ['embroidered-cap', 'vegan-travel-pouch', 'signature-cup'];
-  
-  // Find a quick-add button for a product that WILL open the popup
+
+  // Find all quick-add buttons for products that WILL open the popup
   const quickAddButtons = page.locator(selectors.quickAddButton);
   await quickAddButtons.first().waitFor({ state: 'attached', timeout: 20000 });
-  
+
   const buttonCount = await quickAddButtons.count();
-  let targetButton = null;
-  
+  const candidateButtons: { index: number; handle: string | null }[] = [];
+
   for (let i = 0; i < buttonCount; i++) {
     const button = quickAddButtons.nth(i);
     const productHandle = await button.getAttribute('data-product-handle');
-    
+
     // Skip products that don't open popup
     if (productHandle && !noOptionsProducts.includes(productHandle)) {
-      // Check if button is visible
       if (await button.isVisible().catch(() => false)) {
-        targetButton = button;
-        break;
+        candidateButtons.push({ index: i, handle: productHandle });
       }
     }
   }
-  
-  if (!targetButton) {
+
+  if (candidateButtons.length === 0) {
     // Fallback to first visible button
-    targetButton = quickAddButtons.first();
+    candidateButtons.push({ index: 0, handle: null });
   }
-  
-  await targetButton.scrollIntoViewIfNeeded();
-  await killPopups(page);
-  
-  // Set up listener for the fetch request that loads popup content
-  const fetchPromise = page.waitForResponse(
-    response => response.url().includes('view=hb-popup-ajax') && response.status() === 200,
-    { timeout: 20000 }
-  ).catch(() => null);
-  
-  await targetButton.click({ force: true });
-  
-  // Wait for the AJAX fetch to complete (popup content loaded)
-  const fetchResponse = await fetchPromise;
-  
-  if (fetchResponse) {
-    // Content loaded - wait for active class with generous timeout
-    await page.waitForFunction(() => {
-      const popup = document.querySelector('[js-hb-popup]');
-      return popup && popup.classList.contains('active');
-    }, { timeout: 15000 });
-  } else {
-    // Fetch didn't happen - might be a no-options product that was clicked
-    // Try waiting for popup anyway
-    await page.waitForSelector(selectors.hbPopupActive, { timeout: 10000 }).catch(async () => {
-      // If popup didn't open, the product might have been added directly to cart
-      // Check if cart drawer opened instead
-      const cartDrawerOpened = await page.evaluate(() => {
-        const drawer = document.querySelector('cart-drawer');
-        return drawer && drawer.classList.contains('active');
-      });
-      
-      if (cartDrawerOpened) {
-        throw new Error('HB Popup: Product was added directly to cart (no options). Try a different product.');
+
+  // Try each candidate button until popup opens successfully
+  let popupOpened = false;
+
+  for (const candidate of candidateButtons) {
+    const targetButton = quickAddButtons.nth(candidate.index);
+
+    await targetButton.scrollIntoViewIfNeeded();
+    await killPopups(page);
+
+    // Set up listener for the fetch request that loads popup content
+    const fetchPromise = page.waitForResponse(
+      response => response.url().includes('view=hb-popup-ajax') && response.status() === 200,
+      { timeout: 25000 }
+    ).catch(() => null);
+
+    await targetButton.click({ force: true });
+
+    // Wait for the AJAX fetch to complete (popup content loaded)
+    const fetchResponse = await fetchPromise;
+
+    if (fetchResponse) {
+      // Content loaded - wait for active class
+      const opened = await page.waitForFunction(() => {
+        const popup = document.querySelector('[js-hb-popup]');
+        return popup && popup.classList.contains('active');
+      }, { timeout: 15000 }).then(() => true).catch(() => false);
+
+      if (opened) {
+        popupOpened = true;
+        break;
       }
-      throw new Error('HB Popup: Failed to open popup');
+    }
+
+    // Fetch didn't return or popup didn't activate — check if cart drawer opened instead
+    const cartDrawerOpened = await page.evaluate(() => {
+      const drawer = document.querySelector('cart-drawer');
+      return drawer && drawer.classList.contains('active');
     });
+
+    if (cartDrawerOpened) {
+      // Close the cart drawer and try the next product
+      await page.evaluate(() => {
+        const drawer = document.querySelector('cart-drawer') as any;
+        if (drawer && typeof drawer.close === 'function') drawer.close();
+        else drawer?.classList.remove('active', 'animate');
+      });
+      await page.waitForTimeout(500);
+      continue;
+    }
+
+    // Try the popup selector directly (maybe AJAX response wasn't intercepted)
+    const directCheck = await page.waitForSelector(selectors.hbPopupActive, { timeout: 5000 })
+      .then(() => true).catch(() => false);
+
+    if (directCheck) {
+      popupOpened = true;
+      break;
+    }
   }
-  
+
+  if (!popupOpened) {
+    throw new Error('HB Popup: Failed to open popup after trying all candidate products');
+  }
+
   // Wait for popup content to be fully rendered
   await page.waitForFunction(() => {
     const popup = document.querySelector('[js-hb-popup]');
@@ -490,7 +524,7 @@ export async function openHbPopup(page: Page): Promise<void> {
     const atcButton = popup?.querySelector('#ProductSubmitButton-hb-popup-ajax');
     return popup?.classList.contains('active') && content && content.innerHTML.trim() !== '' && atcButton;
   }, { timeout: 15000 });
-  
+
   // Small delay for CSS transition to complete
   await page.waitForTimeout(300);
 }

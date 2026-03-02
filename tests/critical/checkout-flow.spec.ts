@@ -17,7 +17,7 @@ test.describe('Checkout Flow - Critical Interactions', () => {
   
   test('can navigate to checkout from cart drawer', async ({ page }) => {
     // Step 1: Visit product page and add to cart
-    await fastVisit(page, '/products/essentials');
+    await fastVisit(page, '/products/essentials-pro');
     await addToCart(page);
     
     // Step 2: Verify cart drawer is fully ready

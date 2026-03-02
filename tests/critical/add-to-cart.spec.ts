@@ -17,7 +17,7 @@ import { fastVisit, addToCart, selectors } from '../helpers/test-utils';
 test.describe('Add to Cart - Critical Interactions', () => {
   
   test.beforeEach(async ({ page }) => {
-    await fastVisit(page, '/products/essentials');
+    await fastVisit(page, '/products/essentials-pro');
   });
 
   test('product page loads with ATC button', async ({ page }) => {

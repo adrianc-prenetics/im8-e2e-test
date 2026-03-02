@@ -35,7 +35,7 @@ test.describe('Cart Drawer - Critical Interactions', () => {
   });
 
   test('cart drawer shows checkout button when items in cart', async ({ page }) => {
-    await fastVisit(page, '/products/essentials');
+    await fastVisit(page, '/products/essentials-pro');
     
     // Add to cart - drawer opens automatically
     await addToCart(page);
@@ -49,7 +49,7 @@ test.describe('Cart Drawer - Critical Interactions', () => {
   });
 
   test('can add item to cart from product page', async ({ page }) => {
-    await fastVisit(page, '/products/essentials');
+    await fastVisit(page, '/products/essentials-pro');
     
     // Add to cart and verify drawer opens
     await addToCart(page);
