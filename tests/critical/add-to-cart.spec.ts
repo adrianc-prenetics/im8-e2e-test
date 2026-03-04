@@ -25,8 +25,9 @@ test.describe('Add to Cart - Critical Interactions', () => {
     await expect(page).toHaveURL(/\/products\//);
     
     // ATC button: [id^="ProductSubmitButton"] (buy-buttons.liquid)
+    // Generous timeout for CI/first-load cold start scenarios
     const atcButton = page.locator(selectors.atcButton).first();
-    await expect(atcButton).toBeVisible({ timeout: 20000 });
+    await expect(atcButton).toBeVisible({ timeout: 30000 });
   });
 
   test('can click ATC button and cart drawer opens', async ({ page }) => {

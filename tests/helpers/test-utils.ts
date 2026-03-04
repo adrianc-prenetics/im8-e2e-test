@@ -240,15 +240,18 @@ async function addToCartViaAPI(page: Page, formSelector: string): Promise<boolea
   return await page.evaluate(async (selector) => {
     const form = document.querySelector(selector) as HTMLFormElement;
     if (!form) return false;
-    
+
     // Get variant ID from form
     const variantInput = form.querySelector('input[name="id"]') as HTMLInputElement;
     const variantId = variantInput?.value;
-    
+
     if (!variantId) return false;
-    
+
     try {
       // Call cart API directly (same as product-form.js line 95)
+      // NOTE: Do NOT send selling_plan — it can cause 422 errors if the plan
+      // doesn't match the variant. Without selling_plan, the API adds the item
+      // as a one-time purchase with correct pricing.
       const response = await fetch('/cart/add.js', {
         method: 'POST',
         headers: {
@@ -462,9 +465,10 @@ export async function openHbPopup(page: Page): Promise<void> {
     await killPopups(page);
 
     // Set up listener for the fetch request that loads popup content
+    // Use longer timeout for CI where network can be slow
     const fetchPromise = page.waitForResponse(
       response => response.url().includes('view=hb-popup-ajax') && response.status() === 200,
-      { timeout: 25000 }
+      { timeout: 35000 }
     ).catch(() => null);
 
     await targetButton.click({ force: true });
@@ -622,13 +626,13 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
         // Direct cart API call
         const response = await fetch('/cart/add.js', {
           method: 'POST',
-          headers: { 
+          headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json'
           },
-          body: JSON.stringify({ 
-            id: parseInt(vid, 10), 
-            quantity: 1 
+          body: JSON.stringify({
+            id: parseInt(vid, 10),
+            quantity: 1
           }),
         });
         

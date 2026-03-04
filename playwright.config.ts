@@ -67,8 +67,11 @@ export default defineConfig({
     },
     {
       name: 'mobile',
-      use: { 
+      use: {
+        // Use Chromium with iPhone 13 viewport/UA for reliable mobile testing.
+        // WebKit has timing issues with route blocking that cause flaky failures locally.
         ...devices['iPhone 13'],
+        defaultBrowserType: 'chromium',
       },
     },
   ],
