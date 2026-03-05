@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { killPopups } from '../helpers/test-utils';
+import { fastVisit, killPopups, selectors } from '../helpers/test-utils';
 
 /**
  * Sticky ATC Bar Tests
@@ -9,26 +9,18 @@ import { killPopups } from '../helpers/test-utils';
  * 1. Main product-form with ProductSubmitButton (in viewport at top)
  * 2. Sticky bar (.product-buy-sticky-container) fixed at bottom after scroll
  *
- * NOTE: Uses lightweight navigation (no homepage-first market init) because
- * this test only checks DOM presence — it doesn't need US market pricing.
- * This avoids timeouts on CI when the site is slow after many prior tests.
+ * CRITICAL: Must use fastVisit() to set US market cookies and force locale,
+ * otherwise product may not be available in default market (some EU markets disabled).
  */
 test.describe('Sticky ATC Bar - Critical Interactions', () => {
 
   test('product page has ATC functionality after scroll', async ({ page }) => {
-    // Block popups at network level
-    await page.route('**/*klaviyo*', route => route.abort());
-    await page.route('**/static.klaviyo.com/**', route => route.abort());
-    await page.route(/alia-prod\.com/, route => route.abort());
-    await page.route('**/*gorgias*', route => route.abort());
-    await page.route('**/*loox*', route => route.abort());
-
-    // Navigate directly — use domcontentloaded since ATC buttons are server-rendered
-    // and don't require JS initialization to exist in the DOM
-    await page.goto('/products/essentials-pro', { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForSelector('body', { timeout: 15000 });
-    await killPopups(page);
-
+    // Use fastVisit to set market + block popups + force US locale
+    await fastVisit(page, '/products/essentials-pro');
+    
+    // Wait for body to be visible
+    await expect(page.locator('body')).toBeVisible();
+    
     // Broader ATC selector: includes main form button AND sticky bar button
     const atcSelector = 'product-form button[type="submit"], button[name="add"], .product-form__submit, [id^="ProductSubmitButton"], .product-buy-sticky__button';
 
