@@ -2,7 +2,7 @@ name: Playwright E2E Tests
 
 on:
   schedule:
-    - cron: '30 * * * *'  # Every hour at :30 (30 min after Cypress)
+    - cron: '30 6 * * *'  # Daily at 6:30 AM UTC (30 min after Cypress)
   push:
     branches: [main]
   pull_request:

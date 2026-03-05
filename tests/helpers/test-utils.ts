@@ -167,8 +167,9 @@ export async function fastVisit(page: Page, url: string): Promise<void> {
       await acceptButton.click({ force: true });
     }
 
-    // Now navigate to the actual product page — wait for full load so JS executes
-    await page.goto(url, { waitUntil: 'load', timeout: 60000 });
+    // Now navigate to the actual product page
+    // Use domcontentloaded instead of load to avoid hanging on slow third-party resources
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
   } else {
     // For non-product pages, navigate directly
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -176,6 +177,9 @@ export async function fastVisit(page: Page, url: string): Promise<void> {
 
   // Wait for body
   await page.waitForSelector('body', { timeout: 15000 });
+
+  // Allow page to stabilize after navigation
+  await page.waitForTimeout(1000);
 
   // Force US market via JavaScript
   await page.evaluate(() => {
@@ -193,7 +197,7 @@ export async function fastVisit(page: Page, url: string): Promise<void> {
     return typeof customElements !== 'undefined' &&
            (customElements.get('cart-drawer') !== undefined ||
             customElements.get('product-form') !== undefined);
-  }, { timeout: 30000 }).catch(() => {
+  }, { timeout: 45000 }).catch(() => {
     // Custom element may not be on all pages
   });
 
@@ -520,13 +524,16 @@ export async function openHbPopup(page: Page): Promise<void> {
     throw new Error('HB Popup: Failed to open popup after trying all candidate products');
   }
 
-  // Wait for popup content to be fully rendered
+  // Allow popup AJAX content to be injected and JS to execute
+  await page.waitForTimeout(1000);
+
+  // Wait for popup content to be fully rendered — generous timeout for CI
   await page.waitForFunction(() => {
     const popup = document.querySelector('[js-hb-popup]');
     const content = popup?.querySelector('[js-product-detail]');
     const atcButton = popup?.querySelector('#ProductSubmitButton-hb-popup-ajax');
     return popup?.classList.contains('active') && content && content.innerHTML.trim() !== '' && atcButton;
-  }, { timeout: 15000 });
+  }, { timeout: 30000 });
 
   // Small delay for CSS transition to complete
   await page.waitForTimeout(300);

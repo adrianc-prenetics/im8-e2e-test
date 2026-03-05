@@ -25,8 +25,9 @@ test.describe('Sticky ATC Bar - Critical Interactions', () => {
     const atcSelector = 'product-form button[type="submit"], button[name="add"], .product-form__submit, [id^="ProductSubmitButton"], .product-buy-sticky__button';
 
     // Wait for any ATC button to appear in DOM — these are server-rendered
+    // Use generous timeout for CI where Shopify page load can be slow
     const atcButton = page.locator(atcSelector).first();
-    await atcButton.waitFor({ state: 'attached', timeout: 30000 });
+    await atcButton.waitFor({ state: 'attached', timeout: 45000 });
 
     // Scroll to bottom to trigger sticky bar
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));

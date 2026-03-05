@@ -16,8 +16,8 @@ export default defineConfig({
   /* Retry failed tests */
   retries: process.env.CI ? 2 : 1,
   
-  /* Limit parallel workers to avoid overwhelming the site */
-  workers: process.env.CI ? 2 : 1,
+  /* Limit to 1 worker in CI to avoid rate limiting on Shopify store */
+  workers: 1,
   
   /* Reporter to use */
   reporter: [
