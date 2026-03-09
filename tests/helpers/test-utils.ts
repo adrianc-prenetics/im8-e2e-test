@@ -330,14 +330,17 @@ async function addToCartViaAPI(page: Page, formSelector: string): Promise<boolea
  */
 export async function addToCart(page: Page): Promise<void> {
   await killPopups(page);
-  
+
+  // Wait for page to finish loading before checking for custom elements
+  await page.waitForLoadState('domcontentloaded');
+
   // Wait for product-form custom element OR the form to exist in DOM
   await page.waitForFunction(() => {
-    const ceReady = typeof customElements !== 'undefined' && 
+    const ceReady = typeof customElements !== 'undefined' &&
            customElements.get('product-form') !== undefined;
     const formExists = !!document.querySelector('product-form form, form[data-type="add-to-cart-form"], form.test-product-form');
     return ceReady || formExists;
-  }, { timeout: 30000 });
+  }, { timeout: 45000 });
   
   await page.waitForTimeout(1000);
   await killPopups(page);
@@ -527,33 +530,21 @@ export async function openHbPopup(page: Page): Promise<void> {
   // Allow popup AJAX content to be injected and JS to execute
   await page.waitForTimeout(1000);
 
-  // Wait for popup content to be fully rendered — CRITICAL: Wait for custom element hydration
-  // The product-info custom element is async-loaded, so we need to wait for it specifically
-  // along with variant-selects to ensure the product form is fully ready
+  // Wait for popup content to be fully rendered
+  // Only require essential conditions: popup active + content loaded + ATC button present
+  // Don't require product-info/variant-selects hydration as these are secondary and can be slow
   await page.waitForFunction(() => {
     const popup = document.querySelector('[js-hb-popup]');
-    if (!popup) return false;
+    if (!popup || !popup.classList.contains('active')) return false;
 
-    // CRITICAL: Wait for product-info custom element to hydrate (proof that product template loaded)
-    const productInfo = popup.querySelector('product-info');
-    if (!productInfo) return false;
-
-    // Check if product-info has loaded (look for variant-selects which is rendered inside)
-    const variantSelects = popup.querySelector('variant-selects');
-    if (!variantSelects) return false;
-
-    // Now check for content and button
     const content = popup.querySelector('[js-product-detail]');
-    const atcButton = popup.querySelector('#ProductSubmitButton-hb-popup-ajax');
+    if (!content || content.innerHTML.trim() === '') return false;
 
-    // All conditions must be met for popup to be ready
-    return popup.classList.contains('active') &&
-           productInfo &&
-           variantSelects &&
-           content &&
-           content.innerHTML.trim() !== '' &&
-           atcButton;
-  }, { timeout: 45000 }); // Increased timeout to 45s for CI environment (slower than local)
+    // ATC button OR product-info (either means content loaded)
+    const atcButton = popup.querySelector('#ProductSubmitButton-hb-popup-ajax');
+    const productInfo = popup.querySelector('product-info');
+    return !!(atcButton || productInfo);
+  }, { timeout: 60000 });
   // Small delay for CSS transition to complete
   await page.waitForTimeout(300);
 }

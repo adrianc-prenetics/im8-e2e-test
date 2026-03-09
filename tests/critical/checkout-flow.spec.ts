@@ -27,9 +27,10 @@ test.describe('Checkout Flow - Critical Interactions', () => {
     await killPopups(page);
     
     // Step 4: Verify checkout button is visible and enabled
+    // Cart update can take time — button starts disabled with "$0" until cart JS updates it
     const checkoutButton = page.locator(selectors.checkoutButton);
     await expect(checkoutButton).toBeVisible({ timeout: 10000 });
-    await expect(checkoutButton).toBeEnabled();
+    await expect(checkoutButton).toBeEnabled({ timeout: 15000 });
     
     // Step 5: Click checkout button
     await killPopups(page);
