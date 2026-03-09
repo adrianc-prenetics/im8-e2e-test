@@ -527,14 +527,33 @@ export async function openHbPopup(page: Page): Promise<void> {
   // Allow popup AJAX content to be injected and JS to execute
   await page.waitForTimeout(1000);
 
-  // Wait for popup content to be fully rendered — generous timeout for CI
+  // Wait for popup content to be fully rendered — CRITICAL: Wait for custom element hydration
+  // The product-info custom element is async-loaded, so we need to wait for it specifically
+  // along with variant-selects to ensure the product form is fully ready
   await page.waitForFunction(() => {
     const popup = document.querySelector('[js-hb-popup]');
-    const content = popup?.querySelector('[js-product-detail]');
-    const atcButton = popup?.querySelector('#ProductSubmitButton-hb-popup-ajax');
-    return popup?.classList.contains('active') && content && content.innerHTML.trim() !== '' && atcButton;
-  }, { timeout: 30000 });
+    if (!popup) return false;
 
+    // CRITICAL: Wait for product-info custom element to hydrate (proof that product template loaded)
+    const productInfo = popup.querySelector('product-info');
+    if (!productInfo) return false;
+
+    // Check if product-info has loaded (look for variant-selects which is rendered inside)
+    const variantSelects = popup.querySelector('variant-selects');
+    if (!variantSelects) return false;
+
+    // Now check for content and button
+    const content = popup.querySelector('[js-product-detail]');
+    const atcButton = popup.querySelector('#ProductSubmitButton-hb-popup-ajax');
+
+    // All conditions must be met for popup to be ready
+    return popup.classList.contains('active') &&
+           productInfo &&
+           variantSelects &&
+           content &&
+           content.innerHTML.trim() !== '' &&
+           atcButton;
+  }, { timeout: 45000 }); // Increased timeout to 45s for CI environment (slower than local)
   // Small delay for CSS transition to complete
   await page.waitForTimeout(300);
 }
