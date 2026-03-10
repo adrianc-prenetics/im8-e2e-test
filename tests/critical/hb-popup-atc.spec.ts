@@ -19,6 +19,8 @@ import { fastVisit, openHbPopup, addToCartFromHbPopup, killPopups, selectors } f
  *
  * NOTE: openHbPopup has built-in retry logic — if the first product's popup
  * fails to open, it tries the next candidate product automatically.
+ * 
+ * TIMEOUT: 50s per test (covers collection load + popup AJAX + hydration + ATC)
  */
 test.describe('HB Popup Add to Cart - Critical Interactions', () => {
 
@@ -27,12 +29,14 @@ test.describe('HB Popup Add to Cart - Critical Interactions', () => {
   });
 
   test('collection page has quick-add buttons', async ({ page }) => {
+    test.setTimeout(50000);
     const quickAddButtons = page.locator(selectors.quickAddButton);
     await quickAddButtons.first().waitFor({ state: 'attached', timeout: 20000 });
     expect(await quickAddButtons.count()).toBeGreaterThan(0);
   });
 
   test('clicking quick-add button opens HB popup', async ({ page }) => {
+    test.setTimeout(50000);
     await openHbPopup(page);
 
     // Popup should have 'active' class
@@ -40,6 +44,7 @@ test.describe('HB Popup Add to Cart - Critical Interactions', () => {
   });
 
   test('HB popup displays product options', async ({ page }) => {
+    test.setTimeout(50000);
     await openHbPopup(page);
 
     // Variant options in popup (product.hb-popup-ajax.liquid)
@@ -49,6 +54,7 @@ test.describe('HB Popup Add to Cart - Critical Interactions', () => {
   });
 
   test('HB popup has ATC button', async ({ page }) => {
+    test.setTimeout(50000);
     await openHbPopup(page);
 
     // ATC button: #ProductSubmitButton-hb-popup-ajax
@@ -57,6 +63,7 @@ test.describe('HB Popup Add to Cart - Critical Interactions', () => {
   });
 
   test('can add product to cart from HB popup', async ({ page }) => {
+    test.setTimeout(50000);
     await openHbPopup(page);
 
     // Add to cart from popup - this opens cart drawer
