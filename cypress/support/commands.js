@@ -82,41 +82,71 @@ Cypress.Commands.add('killPopups', () => {
  * 
  * This avoids timeouts from slow third-party scripts (analytics, chat widgets, etc.)
  */
+/**
+ * Detect Cloudflare challenge page.
+ * Cloudflare shows "Performing security verification" / "Just a moment" when
+ * it suspects bot traffic. The challenge JS runs in-page and sets cf_clearance
+ * cookie, but may not auto-navigate in headless Chrome. We detect it and retry.
+ */
+function isCloudflareChallenge($body) {
+  const text = $body.text();
+  return text.includes('security verification') ||
+    text.includes('Just a moment') ||
+    text.includes('Checking your browser') ||
+    $body.find('#challenge-running, .cf-turnstile, #challenge-form').length > 0;
+}
+
+/**
+ * Visit a URL and retry if Cloudflare challenge is detected.
+ * The challenge JS sets the cf_clearance cookie in the background.
+ * After a short wait, the next cy.visit() will include that cookie and bypass.
+ */
+function visitWithCloudflareRetry(url, visitOptions, maxRetries = 4) {
+  cy.visit(url, visitOptions);
+  cy.get('body', { timeout: 15000 }).should('exist');
+
+  // Check for Cloudflare challenge and retry if needed
+  cy.get('body').then(($body) => {
+    if (isCloudflareChallenge($body) && maxRetries > 0) {
+      cy.log(`[IM8-TEST] Cloudflare challenge detected — waiting 15s then retrying (${maxRetries} left)...`);
+      // Give the challenge JS time to solve and set cf_clearance cookie
+      cy.wait(15000);
+      visitWithCloudflareRetry(url, visitOptions, maxRetries - 1);
+    }
+  });
+}
+
 Cypress.Commands.add('fastVisit', (url) => {
   cy.log(`[IM8-TEST] Visiting: ${url}`);
-  
+
   const isProductPage = url.includes('/products/');
-  
+
   // Set US market cookies
   cy.setCookie('localization', 'US', { domain: 'im8health.com' });
   cy.setCookie('cart_currency', 'USD', { domain: 'im8health.com' });
-  
+
   // Block heavy third-party scripts at network level (matches Playwright fastVisit)
   cy.intercept(/alia-prod\.com/, { statusCode: 200, body: '' });
   cy.intercept(/klaviyo/, { statusCode: 200, body: '' });
   cy.intercept(/static\.klaviyo\.com/, { statusCode: 200, body: '' });
   cy.intercept(/gorgias/, { statusCode: 200, body: '' });
   cy.intercept(/loox/, { statusCode: 200, body: '' });
-  
+
+  const defaultVisitOptions = {
+    failOnStatusCode: false,
+    onBeforeLoad: (win) => {
+      win.dataLayer = win.dataLayer || [];
+      win.ga = win.ga || function() {};
+      win.fbq = win.fbq || function() {};
+      win.klaviyo = win.klaviyo || [];
+    },
+    timeout: 60000,
+  };
+
   // For product pages, visit homepage first to establish market
   if (isProductPage) {
     cy.log('[IM8-TEST] Product page detected - visiting homepage first to establish US market');
-    
-    cy.visit('/', {
-      failOnStatusCode: false,
-      onBeforeLoad: (win) => {
-        win.dataLayer = win.dataLayer || [];
-        win.ga = win.ga || function() {};
-        win.fbq = win.fbq || function() {};
-        win.klaviyo = win.klaviyo || [];
-      },
-      timeout: 60000,
-    });
-
-    // Wait for homepage to load (past any Cloudflare challenge)
-    cy.get('body', { timeout: 15000 }).should('exist');
-    cy.get('[id^="shopify-section"], [id^="MainContent"], main .shopify-section', { timeout: 60000 })
-      .should('exist');
+    visitWithCloudflareRetry('/', defaultVisitOptions);
 
     // Accept cookie consent on homepage
     cy.get('body').then($body => {
@@ -131,19 +161,18 @@ Cypress.Commands.add('fastVisit', (url) => {
         });
       }
     });
-    
+
     cy.wait(1000);
   }
-  
-  // Now visit the actual URL
-  cy.visit(url, {
+
+  // Now visit the actual URL (with localStorage setup for non-product homepage visits too)
+  const mainVisitOptions = {
     failOnStatusCode: false,
     onBeforeLoad: (win) => {
       win.dataLayer = win.dataLayer || [];
       win.ga = win.ga || function() {};
       win.fbq = win.fbq || function() {};
       win.klaviyo = win.klaviyo || [];
-      // Set localStorage for market preference
       try {
         win.localStorage.setItem('shopify_market', 'US');
         win.localStorage.setItem('currency', 'USD');
@@ -152,24 +181,16 @@ Cypress.Commands.add('fastVisit', (url) => {
       }
     },
     timeout: 60000,
-  });
-  
-  // Wait for body to exist (DOM ready)
-  cy.get('body', { timeout: 30000 }).should('exist');
+  };
 
-  // Wait for actual Shopify content to appear — handles Cloudflare challenge pages.
-  // Cloudflare's JS challenge shows "Performing security verification" and has no
-  // Shopify sections. It auto-resolves within ~5-30s, after which the real page loads.
-  // All Shopify pages have sections with id="shopify-section-*".
-  cy.get('[id^="shopify-section"], [id^="MainContent"], main .shopify-section', { timeout: 60000 })
-    .should('exist');
+  visitWithCloudflareRetry(url, mainVisitOptions);
 
   // Wait for critical page elements to stabilize
   cy.wait(1500);
-  
+
   // Kill popups (this also fixes body if Klaviyo hid it)
   cy.killPopups();
-  
+
   // Accept cookie consent
   cy.get('body').then($body => {
     if ($body.find('button').length > 0) {
@@ -183,7 +204,7 @@ Cypress.Commands.add('fastVisit', (url) => {
       });
     }
   });
-  
+
   // Kill popups again after cookie consent
   cy.killPopups();
 });
