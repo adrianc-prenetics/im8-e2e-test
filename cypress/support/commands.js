@@ -75,47 +75,13 @@ Cypress.Commands.add('killPopups', () => {
 
 /**
  * Fast page load with US market initialization
- * 
+ *
  * CRITICAL: For product pages, we must visit the homepage first to establish
  * the US market. Some EU markets have been disabled and product pages will
  * redirect to homepage if the market isn't set correctly.
- * 
+ *
  * This avoids timeouts from slow third-party scripts (analytics, chat widgets, etc.)
  */
-/**
- * Detect Cloudflare challenge page.
- * Cloudflare shows "Performing security verification" / "Just a moment" when
- * it suspects bot traffic. The challenge JS runs in-page and sets cf_clearance
- * cookie, but may not auto-navigate in headless Chrome. We detect it and retry.
- */
-function isCloudflareChallenge($body) {
-  const text = $body.text();
-  return text.includes('security verification') ||
-    text.includes('Just a moment') ||
-    text.includes('Checking your browser') ||
-    $body.find('#challenge-running, .cf-turnstile, #challenge-form').length > 0;
-}
-
-/**
- * Visit a URL and retry if Cloudflare challenge is detected.
- * The challenge JS sets the cf_clearance cookie in the background.
- * After a short wait, the next cy.visit() will include that cookie and bypass.
- */
-function visitWithCloudflareRetry(url, visitOptions, maxRetries = 4) {
-  cy.visit(url, visitOptions);
-  cy.get('body', { timeout: 15000 }).should('exist');
-
-  // Check for Cloudflare challenge and retry if needed
-  cy.get('body').then(($body) => {
-    if (isCloudflareChallenge($body) && maxRetries > 0) {
-      cy.log(`[IM8-TEST] Cloudflare challenge detected — waiting 15s then retrying (${maxRetries} left)...`);
-      // Give the challenge JS time to solve and set cf_clearance cookie
-      cy.wait(15000);
-      visitWithCloudflareRetry(url, visitOptions, maxRetries - 1);
-    }
-  });
-}
-
 Cypress.Commands.add('fastVisit', (url) => {
   cy.log(`[IM8-TEST] Visiting: ${url}`);
 
@@ -132,21 +98,23 @@ Cypress.Commands.add('fastVisit', (url) => {
   cy.intercept(/gorgias/, { statusCode: 200, body: '' });
   cy.intercept(/loox/, { statusCode: 200, body: '' });
 
-  const defaultVisitOptions = {
-    failOnStatusCode: false,
-    onBeforeLoad: (win) => {
-      win.dataLayer = win.dataLayer || [];
-      win.ga = win.ga || function() {};
-      win.fbq = win.fbq || function() {};
-      win.klaviyo = win.klaviyo || [];
-    },
-    timeout: 60000,
-  };
-
   // For product pages, visit homepage first to establish market
   if (isProductPage) {
     cy.log('[IM8-TEST] Product page detected - visiting homepage first to establish US market');
-    visitWithCloudflareRetry('/', defaultVisitOptions);
+
+    cy.visit('/', {
+      failOnStatusCode: false,
+      onBeforeLoad: (win) => {
+        win.dataLayer = win.dataLayer || [];
+        win.ga = win.ga || function() {};
+        win.fbq = win.fbq || function() {};
+        win.klaviyo = win.klaviyo || [];
+      },
+      timeout: 30000,
+    });
+
+    // Wait for homepage to load
+    cy.get('body', { timeout: 15000 }).should('exist');
 
     // Accept cookie consent on homepage
     cy.get('body').then($body => {
@@ -165,14 +133,15 @@ Cypress.Commands.add('fastVisit', (url) => {
     cy.wait(1000);
   }
 
-  // Now visit the actual URL (with localStorage setup for non-product homepage visits too)
-  const mainVisitOptions = {
+  // Now visit the actual URL
+  cy.visit(url, {
     failOnStatusCode: false,
     onBeforeLoad: (win) => {
       win.dataLayer = win.dataLayer || [];
       win.ga = win.ga || function() {};
       win.fbq = win.fbq || function() {};
       win.klaviyo = win.klaviyo || [];
+      // Set localStorage for market preference
       try {
         win.localStorage.setItem('shopify_market', 'US');
         win.localStorage.setItem('currency', 'USD');
@@ -181,9 +150,10 @@ Cypress.Commands.add('fastVisit', (url) => {
       }
     },
     timeout: 60000,
-  };
+  });
 
-  visitWithCloudflareRetry(url, mainVisitOptions);
+  // Wait for body to exist (DOM ready)
+  cy.get('body', { timeout: 30000 }).should('exist');
 
   // Wait for critical page elements to stabilize
   cy.wait(1500);
