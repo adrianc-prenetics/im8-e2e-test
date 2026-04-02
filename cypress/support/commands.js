@@ -152,8 +152,17 @@ Cypress.Commands.add('fastVisit', (url) => {
     timeout: 60000,
   });
 
-  // Wait for body to exist (DOM ready)
+  // Wait for body, then check for Cloudflare challenge and retry if needed
   cy.get('body', { timeout: 30000 }).should('exist');
+  cy.get('body').then(($body) => {
+    const text = $body.text();
+    if (text.includes('security verification') || text.includes('Just a moment')) {
+      cy.log('[IM8-TEST] Cloudflare challenge — waiting 15s and retrying...');
+      cy.wait(15000);
+      cy.reload();
+      cy.get('body', { timeout: 30000 }).should('exist');
+    }
+  });
 
   // Wait for critical page elements to stabilize
   cy.wait(1500);
