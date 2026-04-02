@@ -110,12 +110,14 @@ Cypress.Commands.add('fastVisit', (url) => {
         win.fbq = win.fbq || function() {};
         win.klaviyo = win.klaviyo || [];
       },
-      timeout: 30000,
+      timeout: 60000,
     });
-    
-    // Wait for homepage to load
+
+    // Wait for homepage to load (past any Cloudflare challenge)
     cy.get('body', { timeout: 15000 }).should('exist');
-    
+    cy.get('[id^="shopify-section"], [id^="MainContent"], main .shopify-section', { timeout: 60000 })
+      .should('exist');
+
     // Accept cookie consent on homepage
     cy.get('body').then($body => {
       if ($body.find('button').length > 0) {
@@ -154,7 +156,14 @@ Cypress.Commands.add('fastVisit', (url) => {
   
   // Wait for body to exist (DOM ready)
   cy.get('body', { timeout: 30000 }).should('exist');
-  
+
+  // Wait for actual Shopify content to appear — handles Cloudflare challenge pages.
+  // Cloudflare's JS challenge shows "Performing security verification" and has no
+  // Shopify sections. It auto-resolves within ~5-30s, after which the real page loads.
+  // All Shopify pages have sections with id="shopify-section-*".
+  cy.get('[id^="shopify-section"], [id^="MainContent"], main .shopify-section', { timeout: 60000 })
+    .should('exist');
+
   // Wait for critical page elements to stabilize
   cy.wait(1500);
   
