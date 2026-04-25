@@ -19,11 +19,13 @@ test.describe('Header Navigation - Critical Interactions', () => {
     const header = page.locator(selectors.header).filter({ visible: true }).first();
     await expect(header).toBeVisible({ timeout: 15000 });
 
-    // Logo link — semantic match on the actual header heading anchor.
-    // Avoids the off-screen shop-now-bar logo (y=-773 w=0 h=0) which has
-    // identical href="/" + aria-label but isn't the real navigation logo.
+    // Logo link — match the unconditional .header__heading-link class on the
+    // anchor itself. Earlier draft used `h1.header__heading > a` but the <h1>
+    // wrapper only renders on homepage (header.liquid wraps it in
+    // {% if request.page_type == 'index' %}). Anchor class survives every
+    // page type, so this stays correct if the test is later reused on PDP/cart.
     await expect(
-      page.locator('header.header h1.header__heading > a[href="/"]')
+      page.locator('header.header a.header__heading-link[href="/"]')
     ).toBeVisible({ timeout: 10000 });
   });
 
