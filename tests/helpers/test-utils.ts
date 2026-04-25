@@ -269,9 +269,24 @@ async function addToCartViaAPI(page: Page, formSelector: string): Promise<boolea
       });
       
       if (!response.ok) return false;
-      
+
       const data = await response.json();
-      
+
+      // Race-prevention: poll /cart.js until item_count > 0 before fetching
+      // sections. /cart/add.js can return 200 before the cart commit is
+      // visible to subsequent reads, leading /?sections=cart-drawer to
+      // render with is-empty and hide #CartDrawer-Checkout via CSS.
+      for (let i = 0; i < 10; i++) {
+        try {
+          const cartResp = await fetch('/cart.js');
+          if (cartResp.ok) {
+            const cart = await cartResp.json();
+            if (cart.item_count && cart.item_count > 0) break;
+          }
+        } catch (_) { /* retry */ }
+        await new Promise(r => setTimeout(r, 150));
+      }
+
       // Now fetch the cart drawer sections and update (mimics cart.renderContents)
       const cartDrawer = document.querySelector('cart-drawer') as any;
       if (cartDrawer) {
@@ -279,7 +294,7 @@ async function addToCartViaAPI(page: Page, formSelector: string): Promise<boolea
         const sectionsResponse = await fetch('/cart?sections=cart-drawer,cart-icon-bubble');
         if (sectionsResponse.ok) {
           const sections = await sectionsResponse.json();
-          
+
           // Update cart drawer content
           if (sections['cart-drawer']) {
             const parser = new DOMParser();
@@ -290,7 +305,7 @@ async function addToCartViaAPI(page: Page, formSelector: string): Promise<boolea
               currentContent.innerHTML = newContent.innerHTML;
             }
           }
-          
+
           // Update cart icon bubble
           if (sections['cart-icon-bubble']) {
             const bubble = document.querySelector('#cart-icon-bubble');
@@ -304,10 +319,17 @@ async function addToCartViaAPI(page: Page, formSelector: string): Promise<boolea
             }
           }
         }
-        
+
+        // Belt-and-suspenders: clear is-empty on BOTH outer <cart-drawer>
+        // and inner <cart-drawer-items>. CSS rule
+        // cart-drawer-items.is-empty + .drawer__footer { display: none }
+        // hides #CartDrawer-Checkout if the inner element brings is-empty
+        // in via innerHTML swap (stale server render).
+        const innerItems = cartDrawer.querySelector('cart-drawer-items');
+        if (innerItems) innerItems.classList.remove('is-empty');
+        cartDrawer.classList.remove('is-empty');
         // Open the cart drawer
         if (typeof cartDrawer.open === 'function') {
-          cartDrawer.classList.remove('is-empty');
           cartDrawer.open();
         }
       }
@@ -654,20 +676,32 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
         });
         
         if (!response.ok) return false;
-        
+
         // Close the popup
         const popup = document.querySelector('[js-hb-popup]');
         if (popup) {
           popup.classList.remove('active');
         }
-        
+
+        // Race-prevention: poll /cart.js until item_count > 0 before sections fetch.
+        for (let i = 0; i < 10; i++) {
+          try {
+            const cartResp = await fetch('/cart.js');
+            if (cartResp.ok) {
+              const cart = await cartResp.json();
+              if (cart.item_count && cart.item_count > 0) break;
+            }
+          } catch (_) { /* retry */ }
+          await new Promise(r => setTimeout(r, 150));
+        }
+
         // Fetch cart sections and open drawer
         const cartDrawer = document.querySelector('cart-drawer') as any;
         if (cartDrawer) {
           const sectionsResponse = await fetch('/cart?sections=cart-drawer,cart-icon-bubble');
           if (sectionsResponse.ok) {
             const sections = await sectionsResponse.json();
-            
+
             // Update cart drawer content
             if (sections['cart-drawer']) {
               const parser = new DOMParser();
@@ -679,8 +713,10 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
               }
             }
           }
-          
-          // Open the drawer
+
+          // Belt-and-suspenders: clear is-empty on inner cart-drawer-items too.
+          const innerItems = cartDrawer.querySelector('cart-drawer-items');
+          if (innerItems) innerItems.classList.remove('is-empty');
           cartDrawer.classList.remove('is-empty');
           if (typeof cartDrawer.open === 'function') {
             cartDrawer.open();

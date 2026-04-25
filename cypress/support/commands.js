@@ -264,7 +264,32 @@ Cypress.Commands.add('forceAddToCart', () => {
     }).then((addResponse) => {
       if (addResponse.status === 200) {
         cy.log('[IM8-TEST] Add to cart API successful');
-        
+
+        // Race-prevention: poll /cart.js until item_count > 0 before fetching
+        // section HTML. /cart/add.js can return 200 before the cart commit is
+        // visible to subsequent reads, leading /?sections=cart-drawer to
+        // render with is-empty and hide #CartDrawer-Checkout (CSS rule
+        // cart-drawer-items.is-empty + .drawer__footer { display: none }).
+        const waitForCartCommit = (attempt = 0) => {
+          if (attempt >= 10) {
+            cy.log('[IM8-TEST] cart commit poll exhausted, proceeding anyway');
+            return;
+          }
+          return cy.request({
+            method: 'GET',
+            url: '/cart.js',
+            failOnStatusCode: false,
+          }).then((cartResp) => {
+            if (cartResp.status === 200 && cartResp.body && cartResp.body.item_count > 0) {
+              cy.log(`[IM8-TEST] cart commit confirmed (item_count=${cartResp.body.item_count})`);
+              return;
+            }
+            cy.wait(150);
+            return waitForCartCommit(attempt + 1);
+          });
+        };
+        waitForCartCommit();
+
         // Fetch updated cart sections
         cy.request({
           method: 'GET',
@@ -276,7 +301,7 @@ Cypress.Commands.add('forceAddToCart', () => {
             cy.window().then((win) => {
               const sections = sectionsResponse.body;
               const cartDrawer = win.document.querySelector('cart-drawer');
-              
+
               if (cartDrawer && sections['cart-drawer']) {
                 // Update cart drawer content
                 const parser = new DOMParser();
@@ -286,8 +311,16 @@ Cypress.Commands.add('forceAddToCart', () => {
                 if (newContent && currentContent) {
                   currentContent.innerHTML = newContent.innerHTML;
                 }
-                
-                // Remove empty state and open drawer
+
+                // Belt-and-suspenders: clear is-empty on BOTH the outer
+                // <cart-drawer> AND the inner <cart-drawer-items>. If the
+                // server response was rendered with stale empty-cart state,
+                // the inner element brings is-empty in via innerHTML swap,
+                // and CSS hides the checkout button. Clearing both classes
+                // unblocks #CartDrawer-Checkout visibility regardless of
+                // server-side commit ordering.
+                const innerItems = cartDrawer.querySelector('cart-drawer-items');
+                if (innerItems) innerItems.classList.remove('is-empty');
                 cartDrawer.classList.remove('is-empty');
                 if (typeof cartDrawer.open === 'function') {
                   cartDrawer.open();
