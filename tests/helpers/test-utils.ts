@@ -328,6 +328,11 @@ async function addToCartViaAPI(page: Page, formSelector: string): Promise<boolea
         const innerItems = cartDrawer.querySelector('cart-drawer-items');
         if (innerItems) innerItems.classList.remove('is-empty');
         cartDrawer.classList.remove('is-empty');
+        // Liquid renders the checkout button with disabled when cart is empty
+        // (cart-drawer.liquid:1761). innerHTML swap can carry that attribute
+        // through; clear it so click assertions actually submit.
+        const checkoutBtn = cartDrawer.querySelector('#CartDrawer-Checkout');
+        if (checkoutBtn) checkoutBtn.removeAttribute('disabled');
         // Open the cart drawer
         if (typeof cartDrawer.open === 'function') {
           cartDrawer.open();
@@ -712,12 +717,29 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
                 currentContent.innerHTML = newContent.innerHTML;
               }
             }
+
+            // Update cart icon bubble — parity with addToCartViaAPI; tests
+            // asserting cart-count badge after HB popup ATC need this.
+            if (sections['cart-icon-bubble']) {
+              const bubble = document.querySelector('#cart-icon-bubble');
+              if (bubble) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(sections['cart-icon-bubble'], 'text/html');
+                const newBubble = doc.querySelector('#cart-icon-bubble');
+                if (newBubble) {
+                  bubble.innerHTML = newBubble.innerHTML;
+                }
+              }
+            }
           }
 
           // Belt-and-suspenders: clear is-empty on inner cart-drawer-items too.
           const innerItems = cartDrawer.querySelector('cart-drawer-items');
           if (innerItems) innerItems.classList.remove('is-empty');
           cartDrawer.classList.remove('is-empty');
+          // Clear disabled on the checkout button (liquid:1761).
+          const checkoutBtn = cartDrawer.querySelector('#CartDrawer-Checkout');
+          if (checkoutBtn) checkoutBtn.removeAttribute('disabled');
           if (typeof cartDrawer.open === 'function') {
             cartDrawer.open();
           } else {

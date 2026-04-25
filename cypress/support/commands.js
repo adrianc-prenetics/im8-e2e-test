@@ -272,7 +272,10 @@ Cypress.Commands.add('forceAddToCart', () => {
         // cart-drawer-items.is-empty + .drawer__footer { display: none }).
         const waitForCartCommit = (attempt = 0) => {
           if (attempt >= 10) {
-            cy.log('[IM8-TEST] cart commit poll exhausted, proceeding anyway');
+            // Poll exhausted — log loud so a real ATC failure (e.g. variant
+            // out of stock returning 200 with empty cart) doesn't hide behind
+            // the otherwise-resilient innerHTML class clearing below.
+            cy.log('[IM8-TEST] WARNING: cart commit poll exhausted after 1.5s — possible silent ATC failure');
             return;
           }
           return cy.request({
@@ -322,6 +325,13 @@ Cypress.Commands.add('forceAddToCart', () => {
                 const innerItems = cartDrawer.querySelector('cart-drawer-items');
                 if (innerItems) innerItems.classList.remove('is-empty');
                 cartDrawer.classList.remove('is-empty');
+                // GAP#1 fix: liquid renders #CartDrawer-Checkout with disabled
+                // attribute when cart == empty (cart-drawer.liquid:1761). After
+                // the innerHTML swap, the new button can carry that attribute
+                // through if the server response was stale. Clear it so click
+                // assertions don't pass-then-silently-no-op.
+                const checkoutBtn = cartDrawer.querySelector('#CartDrawer-Checkout');
+                if (checkoutBtn) checkoutBtn.removeAttribute('disabled');
                 if (typeof cartDrawer.open === 'function') {
                   cartDrawer.open();
                 }
