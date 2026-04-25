@@ -1,12 +1,11 @@
 name: Cypress E2E Tests
 
 on:
+  # Cypress is legacy/nightly coverage only. Playwright is the push/PR gate.
+  # Running both against the live Shopify store at the same time causes CI
+  # contention, Cloudflare/rate-limit flake, and workflow-level timeouts.
   schedule:
     - cron: '0 6 * * *'  # Daily at 6 AM UTC
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
