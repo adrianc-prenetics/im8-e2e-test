@@ -15,11 +15,16 @@ test.describe('Header Navigation - Critical Interactions', () => {
   });
 
   test('header exists with logo', async ({ page }) => {
-    // Header element
-    await expect(page.locator(selectors.header).first()).toBeVisible({ timeout: 15000 });
-    
-    // Logo link to homepage
-    await expect(page.locator('a[href="/"]').first()).toBeVisible({ timeout: 10000 });
+    // Header element — scope to the visible header (mobile shows one, desktop another)
+    const header = page.locator(selectors.header).filter({ visible: true }).first();
+    await expect(header).toBeVisible({ timeout: 15000 });
+
+    // Logo link — semantic match on the actual header heading anchor.
+    // Avoids the off-screen shop-now-bar logo (y=-773 w=0 h=0) which has
+    // identical href="/" + aria-label but isn't the real navigation logo.
+    await expect(
+      page.locator('header.header h1.header__heading > a[href="/"]')
+    ).toBeVisible({ timeout: 10000 });
   });
 
   test('navigation links exist', async ({ page }) => {
