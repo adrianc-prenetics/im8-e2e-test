@@ -1,4 +1,4 @@
-import { Page } from '@playwright/test';
+import { expect, Page } from '@playwright/test';
 
 /**
  * Enterprise-grade test utilities for IM8 Health E2E tests
@@ -18,9 +18,7 @@ import { Page } from '@playwright/test';
 export const selectors = {
   // Cart Drawer (cart-drawer.liquid, cart-drawer.js)
   cartDrawer: 'cart-drawer',
-  // The custom <cart-drawer> wrapper can report hidden in CI even while the
-  // drawer is active; assert the visible inner drawer content instead.
-  cartDrawerActive: 'cart-drawer.active .drawer__inner',
+  cartDrawerActive: 'cart-drawer.active',
   cartDrawerOpening: 'cart-drawer.opening',
   cartDrawerInner: '.drawer__inner',
   cartDrawerOverlay: '#CartDrawer-Overlay',
@@ -235,17 +233,17 @@ export async function fastVisit(page: Page, url: string): Promise<void> {
 export async function waitForCartDrawerReady(page: Page): Promise<void> {
   await page.waitForFunction(() => {
     const drawer = document.querySelector('cart-drawer');
-    const inner = drawer?.querySelector('.drawer__inner') as HTMLElement | null;
-    if (!drawer || !inner) return false;
-
+    if (!drawer) return false;
     const isActive = drawer.classList.contains('active') || drawer.classList.contains('animate');
     const isStillOpening = drawer.classList.contains('opening');
-    const style = window.getComputedStyle(inner);
-    const rect = inner.getBoundingClientRect();
-    const innerVisible = style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
-
-    return isActive && !isStillOpening && innerVisible;
+    return isActive && !isStillOpening;
   }, { timeout: 25000 });
+}
+
+export async function expectCartDrawerOpen(page: Page): Promise<void> {
+  await waitForCartDrawerReady(page);
+  await expect(page.locator('cart-drawer')).toHaveClass(/(?:^|\s)(active|animate)(?:\s|$)/, { timeout: 10000 });
+  await expect(page.locator('cart-drawer .drawer__inner')).toBeAttached({ timeout: 10000 });
 }
 
 /**

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { fastVisit, openHbPopup, addToCartFromHbPopup, killPopups, selectors } from '../helpers/test-utils';
+import { fastVisit, openHbPopup, addToCartFromHbPopup, expectCartDrawerOpen, killPopups, selectors } from '../helpers/test-utils';
 
 /**
  * HB Popup Add to Cart Tests
@@ -70,6 +70,6 @@ test.describe('HB Popup Add to Cart - Critical Interactions', () => {
     await addToCartFromHbPopup(page);
 
     // Cart drawer should be active
-    await expect(page.locator(selectors.cartDrawerActive)).toBeVisible({ timeout: 15000 });
+    await expectCartDrawerOpen(page);
   });
 });

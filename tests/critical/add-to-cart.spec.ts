@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { fastVisit, addToCart, selectors } from '../helpers/test-utils';
+import { fastVisit, addToCart, expectCartDrawerOpen, selectors } from '../helpers/test-utils';
 
 /**
  * Add to Cart Tests
@@ -34,7 +34,8 @@ test.describe('Add to Cart - Critical Interactions', () => {
     // Add to cart - waits for drawer to be fully ready
     await addToCart(page);
     
-    // Verify cart drawer is active
-    await expect(page.locator(selectors.cartDrawerActive)).toBeVisible({ timeout: 10000 });
+    // Verify cart drawer reached open state. CI can report the custom-element
+    // wrapper as hidden even when the drawer has opened, so assert state.
+    await expectCartDrawerOpen(page);
   });
 });

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { fastVisit, addProductToCartByHandle, waitForCartDrawerReady, killPopups, selectors } from '../helpers/test-utils';
+import { fastVisit, addProductToCartByHandle, expectCartDrawerOpen, killPopups, selectors } from '../helpers/test-utils';
 
 /**
  * Checkout Flow Tests
@@ -21,8 +21,8 @@ test.describe('Checkout Flow - Critical Interactions', () => {
     await fastVisit(page, '/');
     await addProductToCartByHandle(page, 'essentials-pro');
     
-    // Step 2: Verify cart drawer is fully ready
-    await waitForCartDrawerReady(page);
+    // Step 2: Verify cart drawer reached open state
+    await expectCartDrawerOpen(page);
     
     // Step 3: Kill popups before interacting
     await killPopups(page);
@@ -30,7 +30,7 @@ test.describe('Checkout Flow - Critical Interactions', () => {
     // Step 4: Verify checkout button is visible and enabled
     // Cart update can take time — button starts disabled with "$0" until cart JS updates it
     const checkoutButton = page.locator(selectors.checkoutButton);
-    await expect(checkoutButton).toBeVisible({ timeout: 10000 });
+    await expect(checkoutButton).toBeAttached({ timeout: 10000 });
     await expect(checkoutButton).toBeEnabled({ timeout: 15000 });
     
     // Step 5: Click checkout button

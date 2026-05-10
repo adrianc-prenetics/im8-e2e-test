@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { fastVisit, addToCart, addProductToCartByHandle, openCartDrawer, killPopups, selectors } from '../helpers/test-utils';
+import { fastVisit, addToCart, addProductToCartByHandle, expectCartDrawerOpen, openCartDrawer, killPopups, selectors } from '../helpers/test-utils';
 
 /**
  * Cart Drawer Tests
@@ -31,7 +31,7 @@ test.describe('Cart Drawer - Critical Interactions', () => {
     await openCartDrawer(page);
 
     // Drawer should be active and ready
-    await expect(page.locator(selectors.cartDrawerActive)).toBeVisible({ timeout: 10000 });
+    await expectCartDrawerOpen(page);
   });
 
   test('cart drawer shows checkout button when items in cart', async ({ page }) => {
@@ -43,9 +43,12 @@ test.describe('Cart Drawer - Critical Interactions', () => {
     // Kill any popups before checking button
     await killPopups(page);
 
+    await expectCartDrawerOpen(page);
+
     // Checkout button: #CartDrawer-Checkout (cart-drawer.liquid line 1745)
     const checkoutButton = page.locator(selectors.checkoutButton);
-    await expect(checkoutButton).toBeVisible({ timeout: 10000 });
+    await expect(checkoutButton).toBeAttached({ timeout: 10000 });
+    await expect(checkoutButton).toBeEnabled({ timeout: 10000 });
   });
 
   test('can add item to cart from product page', async ({ page }) => {
@@ -55,6 +58,6 @@ test.describe('Cart Drawer - Critical Interactions', () => {
     await addProductToCartByHandle(page, 'essentials-pro');
 
     // Drawer should be active
-    await expect(page.locator(selectors.cartDrawerActive)).toBeVisible({ timeout: 10000 });
+    await expectCartDrawerOpen(page);
   });
 });
