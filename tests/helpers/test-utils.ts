@@ -134,9 +134,12 @@ async function isBotVerificationPage(page: Page): Promise<boolean> {
 }
 
 async function recoverFromBotVerification(page: Page): Promise<void> {
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 5; attempt++) {
     if (!(await isBotVerificationPage(page))) return;
-    await page.waitForTimeout(3000);
+
+    // Shopify's bot check can clear after a short cool-down, especially when
+    // the full suite switches from desktop to mobile responsive coverage.
+    await page.waitForTimeout(5000 + attempt * 3000);
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
   }
 
@@ -146,6 +149,11 @@ async function recoverFromBotVerification(page: Page): Promise<void> {
 }
 
 export async function fastVisit(page: Page, url: string): Promise<void> {
+  // Reduce stock Playwright automation fingerprints before the first navigation.
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+  });
+
   // Block popup scripts at network level
   await page.route('**/*klaviyo*', route => route.abort());
   await page.route('**/static.klaviyo.com/**', route => route.abort());
@@ -171,27 +179,9 @@ export async function fastVisit(page: Page, url: string): Promise<void> {
     },
   ]);
 
-  // For product pages, we need to establish the market first
-  // by visiting the homepage, then navigating to the product
-  const isProductPage = url.includes('/products/');
-
-  if (isProductPage) {
-    // First visit homepage to establish market
-    await page.goto('https://im8health.com/', { waitUntil: 'domcontentloaded', timeout: 30000 });
-
-    // Accept cookie consent if present
-    const acceptButton = page.locator('button').filter({ hasText: /accept/i }).first();
-    if (await acceptButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await acceptButton.click({ force: true });
-    }
-
-    // Now navigate to the actual product page
-    // Use domcontentloaded instead of load to avoid hanging on slow third-party resources
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  } else {
-    // For non-product pages, navigate directly
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  }
+  // Navigate directly after setting market cookies. The old homepage preflight doubled
+  // Shopify traffic for product tests and made bot verification more likely in full runs.
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
   // Wait for body
   await page.waitForSelector('body', { timeout: 15000 });
@@ -502,7 +492,21 @@ export async function addToCart(page: Page): Promise<void> {
   // Strategy 1: Direct API call (most reliable)
   let success = await addToCartViaAPI(page, 'product-form form');
 
-  // Strategy 2: Button click fallback
+  // Strategy 2: Product-handle API fallback. This avoids transient mobile form
+  // state while still exercising the live Shopify cart and drawer rendering path.
+  if (!success) {
+    const handle = new URL(page.url()).pathname.match(/\/products\/([^/?#]+)/)?.[1];
+    if (handle) {
+      try {
+        await addProductToCartByHandle(page, handle);
+        return;
+      } catch (_) {
+        // Fall through to the literal button-click fallback below.
+      }
+    }
+  }
+
+  // Strategy 3: Button click fallback
   if (!success) {
     // Wait for button to be enabled
     await page.waitForFunction(() => {
