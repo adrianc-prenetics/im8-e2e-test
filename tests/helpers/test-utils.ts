@@ -18,7 +18,9 @@ import { Page } from '@playwright/test';
 export const selectors = {
   // Cart Drawer (cart-drawer.liquid, cart-drawer.js)
   cartDrawer: 'cart-drawer',
-  cartDrawerActive: 'cart-drawer.active',
+  // The custom <cart-drawer> wrapper can report hidden in CI even while the
+  // drawer is active; assert the visible inner drawer content instead.
+  cartDrawerActive: 'cart-drawer.active .drawer__inner',
   cartDrawerOpening: 'cart-drawer.opening',
   cartDrawerInner: '.drawer__inner',
   cartDrawerOverlay: '#CartDrawer-Overlay',
@@ -233,10 +235,16 @@ export async function fastVisit(page: Page, url: string): Promise<void> {
 export async function waitForCartDrawerReady(page: Page): Promise<void> {
   await page.waitForFunction(() => {
     const drawer = document.querySelector('cart-drawer');
-    if (!drawer) return false;
+    const inner = drawer?.querySelector('.drawer__inner') as HTMLElement | null;
+    if (!drawer || !inner) return false;
+
     const isActive = drawer.classList.contains('active') || drawer.classList.contains('animate');
     const isStillOpening = drawer.classList.contains('opening');
-    return isActive && !isStillOpening;
+    const style = window.getComputedStyle(inner);
+    const rect = inner.getBoundingClientRect();
+    const innerVisible = style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+
+    return isActive && !isStillOpening && innerVisible;
   }, { timeout: 25000 });
 }
 
