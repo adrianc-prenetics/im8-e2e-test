@@ -1,7 +1,55 @@
-import { expect, Page } from '@playwright/test';
+import { expect, Page, test } from '@playwright/test';
 
 type ShopifyVariant = { id: number; available?: boolean };
 type ShopifyProduct = { variants?: ShopifyVariant[] };
+
+/**
+ * Raised when the storefront serves Shopify/Cloudflare bot verification (the
+ * "Verifying your connection" 429 challenge) instead of letting the cart APIs
+ * run. This is an environmental block — datacenter/CI IPs are challenged hard —
+ * not a product defect, so add-based specs skip rather than fail on it.
+ */
+export class CartUnavailableError extends Error {
+  constructor(message = 'Shopify bot verification blocked the cart endpoint') {
+    super(message);
+    this.name = 'CartUnavailableError';
+  }
+}
+
+/** True when the cart endpoint itself is being bot-challenged (429/430 or a
+ *  non-JSON "Verifying your connection" interstitial), independent of the
+ *  current page's own challenge state. */
+async function cartEndpointBlocked(page: Page): Promise<boolean> {
+  return await page.evaluate(async () => {
+    const r = await fetch('/cart.js', { headers: { Accept: 'application/json' } }).catch(() => null);
+    if (!r) return true;
+    if (r.status === 429 || r.status === 430) return true;
+    const contentType = r.headers.get('content-type') ?? '';
+    if (!contentType.includes('json')) {
+      const text = await r.text().catch(() => '');
+      return /verifying your connection|connection needs to be verified|verify.*before you can proceed/i.test(text);
+    }
+    return false;
+  });
+}
+
+/**
+ * Run an add-to-cart action, skipping the test (not failing) when the
+ * storefront is actively bot-blocking the cart endpoint. The block is an
+ * environmental condition (CI/datacenter IPs are challenged by Shopify's bot
+ * protection), so skipping is honest — it reports the cart couldn't be
+ * exercised rather than fabricating a passing cart. Any other failure throws.
+ */
+export async function addToCartOrSkip(action: () => Promise<void>): Promise<void> {
+  try {
+    await action();
+  } catch (err) {
+    if (err instanceof CartUnavailableError) {
+      test.skip(true, err.message);
+    }
+    throw err;
+  }
+}
 
 /**
  * Enterprise-grade test utilities for IM8 Health E2E tests
@@ -152,7 +200,7 @@ async function recoverFromBotVerification(page: Page): Promise<void> {
   }
 
   if (await isBotVerificationPage(page)) {
-    throw new Error('Shopify bot verification page blocked the test run');
+    throw new CartUnavailableError('Shopify bot verification page blocked the test run');
   }
 }
 
@@ -453,6 +501,9 @@ export async function addProductToCartByHandle(page: Page, handle = 'essentials-
   }
 
   if (!added) {
+    if (await cartEndpointBlocked(page)) {
+      throw new CartUnavailableError();
+    }
     throw new Error(`Failed to add product to cart by handle: ${handle}`);
   }
 
@@ -737,6 +788,12 @@ export async function openHbPopup(page: Page): Promise<void> {
 export async function addToCartFromHbPopup(page: Page): Promise<void> {
   await killPopups(page);
 
+  // Fast-skip if the cart endpoint is already bot-blocked, before the slow
+  // add strategies (button click waits up to 20s) burn the test budget.
+  if (await cartEndpointBlocked(page)) {
+    throw new CartUnavailableError();
+  }
+
   // Ensure popup is open and has content
   const popupIsReady = await page.evaluate(() => {
     const popup = document.querySelector('[js-hb-popup]');
@@ -786,6 +843,9 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
   }
 
   if (!success) {
+    if (await cartEndpointBlocked(page)) {
+      throw new CartUnavailableError();
+    }
     throw new Error('HB Popup ATC: Failed to add product to cart');
   }
 
