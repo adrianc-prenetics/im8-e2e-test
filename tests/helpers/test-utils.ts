@@ -1,5 +1,8 @@
 import { expect, Page } from '@playwright/test';
 
+type ShopifyVariant = { id: number; available?: boolean };
+type ShopifyProduct = { variants?: ShopifyVariant[] };
+
 /**
  * Enterprise-grade test utilities for IM8 Health E2E tests
  *
@@ -16,14 +19,17 @@ import { expect, Page } from '@playwright/test';
  * Exact selectors from shopify-im8-ui theme
  */
 export const selectors = {
-  // Cart Drawer (cart-drawer.liquid, cart-drawer.js)
-  cartDrawer: 'cart-drawer',
-  cartDrawerActive: 'cart-drawer.active',
-  cartDrawerOpening: 'cart-drawer.opening',
+  // Cart. The theme ships Dawn's native <cart-drawer>; the live storefront
+  // also layers Rebuy's Smart Cart on top. Which one opens on a cart-icon
+  // click depends on the environment (Rebuy for real browsers; the native
+  // drawer when Rebuy doesn't finish initializing, e.g. headless CI), so the
+  // helpers below detect whichever cart opened.
+  nativeCartDrawer: 'cart-drawer',
   cartDrawerInner: '.drawer__inner',
-  cartDrawerOverlay: '#CartDrawer-Overlay',
-  checkoutButton: '#CartDrawer-Checkout',
-  cartForm: '#CartDrawer-Form',
+  rebuyCart: '.rebuy-cart',
+  rebuyFlyout: '.rebuy-cart__flyout',
+  // Either cart's checkout control.
+  checkoutButton: '#CartDrawer-Checkout, .rebuy-cart__checkout-button',
 
   // Cart Icon (header.liquid line 307)
   cartIcon: '#cart-icon-bubble',
@@ -95,6 +101,7 @@ export async function killPopups(page: Page): Promise<void> {
       if (!el.closest('cart-drawer') &&
           !el.closest('[js-hb-popup]') &&
           !el.closest('#CartDrawer') &&
+          !el.closest('.rebuy-cart') &&
           !el.classList.contains('drawer__inner')) {
         el.remove();
       }
@@ -107,6 +114,7 @@ export async function killPopups(page: Page): Promise<void> {
           !el.closest('cart-drawer') &&
           !el.closest('[js-hb-popup]') &&
           !el.closest('#CartDrawer') &&
+          !el.closest('.rebuy-cart') &&
           !el.id?.startsWith('shopify-section')) {
         el.remove();
       }
@@ -129,7 +137,7 @@ export async function killPopups(page: Page): Promise<void> {
  */
 async function isBotVerificationPage(page: Page): Promise<boolean> {
   return await page.locator('body').innerText({ timeout: 2000 })
-    .then(text => /connection needs to be verified|verify.*before you can proceed/i.test(text))
+    .then(text => /connection needs to be verified|verify.*before you can proceed|verifying your connection/i.test(text))
     .catch(() => false);
 }
 
@@ -223,27 +231,86 @@ export async function fastVisit(page: Page, url: string): Promise<void> {
 }
 
 /**
- * Wait for cart drawer to be fully open and ready
+ * Wait until a cart is fully open and ready.
  *
- * From cart-drawer.js:
- * - 'active' class added via requestAnimationFrame (~16ms)
- * - 'opening' class removed after 50ms
- * - Drawer is ready when 'active' is present AND 'opening' is absent
+ * The storefront can surface either cart: Rebuy's Smart Cart (`.rebuy-cart`
+ * gains `is-visible`) for real browsers, or Dawn's native `<cart-drawer>`
+ * (gains `active`/`animate`, drops `opening`) when Rebuy doesn't initialize
+ * (e.g. headless CI). Accept whichever opened.
  */
 export async function waitForCartDrawerReady(page: Page): Promise<void> {
   await page.waitForFunction(() => {
+    const rebuy = document.querySelector('.rebuy-cart');
+    if (rebuy?.classList.contains('is-visible')) return true;
     const drawer = document.querySelector('cart-drawer');
     if (!drawer) return false;
-    const isActive = drawer.classList.contains('active') || drawer.classList.contains('animate');
-    const isStillOpening = drawer.classList.contains('opening');
-    return isActive && !isStillOpening;
+    const active = drawer.classList.contains('active') || drawer.classList.contains('animate');
+    return active && !drawer.classList.contains('opening');
   }, { timeout: 25000 });
+}
+
+/**
+ * Wait until the open cart actually contains line items.
+ * Rebuy toggles `has-items`; the native drawer drops `is-empty` and renders an
+ * enabled #CartDrawer-Checkout once it reflects a non-empty cart.
+ */
+export async function waitForCartItems(page: Page): Promise<void> {
+  await page.waitForFunction(() => {
+    const rebuy = document.querySelector('.rebuy-cart');
+    if (rebuy?.classList.contains('is-visible') && rebuy.classList.contains('has-items')) return true;
+    const drawer = document.querySelector('cart-drawer');
+    if (!drawer) return false;
+    const open = drawer.classList.contains('active') || drawer.classList.contains('animate');
+    if (!open) return false;
+    const items = drawer.querySelector('cart-drawer-items');
+    const empty = items ? items.classList.contains('is-empty') : drawer.classList.contains('is-empty');
+    const checkout = drawer.querySelector('#CartDrawer-Checkout');
+    const hasEnabledCheckout = !!checkout && !checkout.hasAttribute('disabled');
+    return !empty || hasEnabledCheckout;
+  }, { timeout: 15000 });
 }
 
 export async function expectCartDrawerOpen(page: Page): Promise<void> {
   await waitForCartDrawerReady(page);
-  await expect(page.locator('cart-drawer')).toHaveClass(/(?:^|\s)(active|animate)(?:\s|$)/, { timeout: 10000 });
-  await expect(page.locator('cart-drawer .drawer__inner')).toBeAttached({ timeout: 10000 });
+  // Inner content of whichever cart opened must be attached.
+  await expect(
+    page.locator('.rebuy-cart.is-visible .rebuy-cart__flyout, cart-drawer .drawer__inner').first(),
+  ).toBeAttached({ timeout: 10000 });
+}
+
+/**
+ * Mirror Shopify's `cart.renderContents`: fetch the server-rendered cart
+ * sections (which reflect the real cart) and patch the native drawer + cart
+ * icon. No-op when the native drawer isn't present (Rebuy refetches on open).
+ */
+async function refreshNativeCartDrawer(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const drawer = document.querySelector('cart-drawer');
+    if (!drawer) return;
+    const resp = await fetch('/cart?sections=cart-drawer,cart-icon-bubble').catch(() => null);
+    if (!resp?.ok) return;
+    const sections = (await resp.json()) as Record<string, string>;
+    const parser = new DOMParser();
+
+    if (sections['cart-drawer']) {
+      const doc = parser.parseFromString(sections['cart-drawer'], 'text/html');
+      const fresh = doc.querySelector('.drawer__inner');
+      const current = drawer.querySelector('.drawer__inner');
+      if (fresh && current) current.innerHTML = fresh.innerHTML;
+      const freshDrawer = doc.querySelector('cart-drawer');
+      if (freshDrawer) drawer.classList.toggle('is-empty', freshDrawer.classList.contains('is-empty'));
+      const freshItems = doc.querySelector('cart-drawer-items');
+      const curItems = drawer.querySelector('cart-drawer-items');
+      if (freshItems && curItems) curItems.classList.toggle('is-empty', freshItems.classList.contains('is-empty'));
+    }
+
+    if (sections['cart-icon-bubble']) {
+      const doc = parser.parseFromString(sections['cart-icon-bubble'], 'text/html');
+      const fresh = doc.querySelector('#cart-icon-bubble');
+      const bubble = document.querySelector('#cart-icon-bubble');
+      if (fresh && bubble) bubble.innerHTML = fresh.innerHTML;
+    }
+  });
 }
 
 /**
@@ -267,10 +334,9 @@ async function addToCartViaAPI(page: Page, formSelector: string): Promise<boolea
     if (!variantId) return false;
 
     try {
-      // Call cart API directly (same as product-form.js line 95)
+      // Call cart API directly (same as product-form.js line 95).
       // NOTE: Do NOT send selling_plan - it can cause 422 errors if the plan
-      // doesn't match the variant. Without selling_plan, the API adds the item
-      // as a one-time purchase with correct pricing.
+      // doesn't match the variant.
       const response = await fetch('/cart/add.js', {
         method: 'POST',
         headers: {
@@ -285,76 +351,18 @@ async function addToCartViaAPI(page: Page, formSelector: string): Promise<boolea
 
       if (!response.ok) return false;
 
-      const data = await response.json();
-
-      // Race-prevention: poll /cart.js until item_count > 0 before fetching
-      // sections. /cart/add.js can return 200 before the cart commit is
-      // visible to subsequent reads, leading /?sections=cart-drawer to
-      // render with is-empty and hide #CartDrawer-Checkout via CSS.
+      // Confirm the cart commit is visible before returning. /cart/add.js can
+      // return 200 before the commit is readable by subsequent /cart.js reads.
       for (let i = 0; i < 10; i++) {
-        try {
-          const cartResp = await fetch('/cart.js');
-          if (cartResp.ok) {
-            const cart = await cartResp.json();
-            if (cart.item_count && cart.item_count > 0) break;
-          }
-        } catch (_) { /* retry */ }
+        const cartResp = await fetch('/cart.js').catch(() => null);
+        if (cartResp?.ok) {
+          const cart = await cartResp.json();
+          if (cart.item_count && cart.item_count > 0) return true;
+        }
         await new Promise(r => setTimeout(r, 150));
       }
 
-      // Now fetch the cart drawer sections and update (mimics cart.renderContents)
-      const cartDrawer = document.querySelector('cart-drawer') as any;
-      if (cartDrawer) {
-        // Fetch updated cart drawer HTML
-        const sectionsResponse = await fetch('/cart?sections=cart-drawer,cart-icon-bubble');
-        if (sectionsResponse.ok) {
-          const sections = await sectionsResponse.json();
-
-          // Update cart drawer content
-          if (sections['cart-drawer']) {
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(sections['cart-drawer'], 'text/html');
-            const newContent = doc.querySelector('.drawer__inner');
-            const currentContent = cartDrawer.querySelector('.drawer__inner');
-            if (newContent && currentContent) {
-              currentContent.innerHTML = newContent.innerHTML;
-            }
-          }
-
-          // Update cart icon bubble
-          if (sections['cart-icon-bubble']) {
-            const bubble = document.querySelector('#cart-icon-bubble');
-            if (bubble) {
-              const parser = new DOMParser();
-              const doc = parser.parseFromString(sections['cart-icon-bubble'], 'text/html');
-              const newBubble = doc.querySelector('#cart-icon-bubble');
-              if (newBubble) {
-                bubble.innerHTML = newBubble.innerHTML;
-              }
-            }
-          }
-        }
-
-        // Belt-and-suspenders: clear is-empty on BOTH outer <cart-drawer>
-        // and inner <cart-drawer-items>. CSS rule
-        // cart-drawer-items.is-empty + .drawer__footer { display: none }
-        // hides #CartDrawer-Checkout if the inner element brings is-empty
-        // in via innerHTML swap (stale server render).
-        const innerItems = cartDrawer.querySelector('cart-drawer-items');
-        if (innerItems) innerItems.classList.remove('is-empty');
-        cartDrawer.classList.remove('is-empty');
-        // Liquid renders the checkout button with disabled when cart is empty
-        // (cart-drawer.liquid:1761). innerHTML swap can carry that attribute
-        // through; clear it so click assertions actually submit.
-        const checkoutBtn = cartDrawer.querySelector('#CartDrawer-Checkout');
-        if (checkoutBtn) checkoutBtn.removeAttribute('disabled');
-        // Open the cart drawer
-        if (typeof cartDrawer.open === 'function') {
-          cartDrawer.open();
-        }
-      }
-
-      return true;
+      return false;
     } catch (e) {
       console.error('addToCartViaAPI error:', e);
       return false;
@@ -363,98 +371,96 @@ async function addToCartViaAPI(page: Page, formSelector: string): Promise<boolea
 }
 
 /**
- * Add a known product by handle without visiting the product page.
- *
- * Shopify bot protection can challenge repeated full product-page loads in CI.
- * This keeps cart-drawer/checkout coverage focused on the cart flow by using
- * Shopify's lightweight product JSON + cart APIs from an already-loaded page.
+ * Perform a single in-page add-to-cart attempt for a product handle, using
+ * Shopify's product JSON + /cart/add.js with backoff for transient throttling.
+ * Returns true once the cart's item_count increases.
  */
-export async function addProductToCartByHandle(page: Page, handle = 'essentials-pro'): Promise<void> {
-  await killPopups(page);
+async function addToCartByHandleInPage(page: Page, handle: string): Promise<boolean> {
+  return await page.evaluate(async (productHandle) => {
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const cartCount = async (): Promise<number> => {
+      const cartResponse = await fetch('/cart.js').catch(() => null);
+      if (!cartResponse?.ok) return -1;
+      const cart = (await cartResponse.json()) as { item_count?: number };
+      return cart.item_count ?? 0;
+    };
 
-  const success = await page.evaluate(async (productHandle) => {
     try {
       const productResponse = await fetch(`/products/${productHandle}.js`, {
         headers: { 'Accept': 'application/json' },
-      });
-      const product = productResponse.ok ? await productResponse.json() : null;
-      // Fallback variant for essentials-pro. Product JSON can be challenged by Shopify/Cloudflare
-      // after many headless requests in a single CI run; cart/add.js remains the behavior under test.
-      const variant = product?.variants?.find((v: any) => v.available) || product?.variants?.[0] || { id: 47876797235367 };
-
-      const addResponse = await fetch('/cart/add.js', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: JSON.stringify({ id: Number(variant.id), quantity: 1 }),
       }).catch(() => null);
-      const cartAddBlocked = !addResponse?.ok;
+      const product = (productResponse?.ok ? await productResponse.json() : null) as ShopifyProduct | null;
+      // Fallback variant for essentials-pro. Product JSON can be challenged by
+      // Shopify/Cloudflare after many headless requests; cart/add.js remains the
+      // behavior under test.
+      const variant = product?.variants?.find((v) => v.available) || product?.variants?.[0] || { id: 47876797235367 };
 
-      for (let i = 0; i < 10; i++) {
-        const cartResponse = await fetch('/cart.js').catch(() => null);
-        if (cartResponse?.ok) {
-          const cart = await cartResponse.json();
-          if (cart.item_count && cart.item_count > 0) break;
+      const before = Math.max(0, await cartCount());
+
+      // Shopify throttles /cart/add.js (429) under rapid sequential adds. Retry
+      // a transient block with backoff before giving up — the add is the
+      // behavior under test, not the rate limiter.
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const addResponse = await fetch('/cart/add.js', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({ id: Number(variant.id), quantity: 1 }),
+        }).catch(() => null);
+
+        if (addResponse?.ok) {
+          for (let i = 0; i < 10; i++) {
+            if (await cartCount() > before) return true;
+            await sleep(150);
+          }
+        } else if (addResponse && addResponse.status !== 429 && addResponse.status !== 430) {
+          // Non-throttle error (e.g. 422 unavailable variant): no point retrying.
+          return false;
         }
-        await new Promise(r => setTimeout(r, 150));
+        await sleep(1000 * (attempt + 1));
       }
-
-      const cartDrawer = document.querySelector('cart-drawer') as any;
-      if (!cartDrawer) return false;
-
-      const sectionsResponse = cartAddBlocked ? null : await fetch('/cart?sections=cart-drawer,cart-icon-bubble').catch(() => null);
-      if (sectionsResponse?.ok) {
-        const sections = await sectionsResponse.json();
-        const parser = new DOMParser();
-
-        if (sections['cart-drawer']) {
-          const doc = parser.parseFromString(sections['cart-drawer'], 'text/html');
-          const newContent = doc.querySelector('.drawer__inner');
-          const currentContent = cartDrawer.querySelector('.drawer__inner');
-          if (newContent && currentContent) currentContent.innerHTML = newContent.innerHTML;
-        }
-
-        if (sections['cart-icon-bubble']) {
-          const bubble = document.querySelector('#cart-icon-bubble');
-          const doc = parser.parseFromString(sections['cart-icon-bubble'], 'text/html');
-          const newBubble = doc.querySelector('#cart-icon-bubble');
-          if (bubble && newBubble) bubble.innerHTML = newBubble.innerHTML;
-        }
-      }
-
-      cartDrawer.querySelector('cart-drawer-items')?.classList.remove('is-empty');
-      cartDrawer.classList.remove('is-empty');
-      cartDrawer.querySelector('#CartDrawer-Checkout')?.removeAttribute('disabled');
-
-      if (cartAddBlocked) {
-        const inner = cartDrawer.querySelector('.drawer__inner') || cartDrawer;
-        if (!cartDrawer.querySelector('#CartDrawer-Checkout')) {
-          const button = document.createElement('button');
-          button.id = 'CartDrawer-Checkout';
-          button.type = 'button';
-          button.textContent = 'CONTINUE TO CHECKOUT';
-          button.addEventListener('click', () => { window.location.href = '/cart'; });
-          inner.appendChild(button);
-        }
-      }
-
-      if (typeof cartDrawer.open === 'function') cartDrawer.open();
-      else cartDrawer.classList.add('active');
-
-      return true;
+      return false;
     } catch (e) {
       console.error('addProductToCartByHandle error:', e);
       return false;
     }
   }, handle);
+}
 
-  if (!success) {
+/**
+ * Add a known product by handle without visiting the product page.
+ *
+ * Uses Shopify's product JSON + cart APIs from the already-loaded page. When
+ * the cart endpoint is bot-challenged (Cloudflare "Verifying your connection"
+ * returns 429 to fetch()), a full page reload lets the browser clear the
+ * challenge and obtain clearance cookies; the add is then retried for real.
+ */
+export async function addProductToCartByHandle(page: Page, handle = 'essentials-pro'): Promise<void> {
+  await killPopups(page);
+
+  let added = await addToCartByHandleInPage(page, handle);
+
+  if (!added) {
+    // The cart endpoint returned Cloudflare's challenge. A single full reload
+    // lets the browser clear it and obtain clearance cookies, then retry once.
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+    await recoverFromBotVerification(page);
+    await page.waitForTimeout(2000);
+    await killPopups(page);
+    added = await addToCartByHandleInPage(page, handle);
+  }
+
+  if (!added) {
     throw new Error(`Failed to add product to cart by handle: ${handle}`);
   }
 
-  await waitForCartDrawerReady(page);
+  // Reflect the new item in the native drawer (renderContents mirror), then
+  // open whichever cart the storefront surfaces and confirm it holds the item.
+  await refreshNativeCartDrawer(page);
+  await openCartDrawer(page);
+  await waitForCartItems(page);
 }
 
 /**
@@ -536,37 +542,39 @@ export async function addToCart(page: Page): Promise<void> {
     throw new Error('Failed to add product to cart');
   }
 
-  // Wait for cart drawer to open
-  await page.waitForFunction(() => {
-    const drawer = document.querySelector('cart-drawer');
-    return drawer && (
-      drawer.classList.contains('active') ||
-      drawer.classList.contains('animate') ||
-      drawer.classList.contains('opening')
-    );
-  }, { timeout: 15000 });
-
-  // Wait for drawer to be fully ready
-  await waitForCartDrawerReady(page);
+  // Mirror Shopify's cart.renderContents so the native drawer reflects the new
+  // item, then surface whichever cart the storefront wired up. openCartDrawer
+  // is idempotent: a real ATC click may have already opened the drawer.
+  await refreshNativeCartDrawer(page);
+  await openCartDrawer(page);
 }
 
 /**
- * Open cart drawer by clicking cart icon
+ * Open the cart by clicking the cart icon.
  *
- * From cart-drawer.js line 46-49:
- * - Click on #cart-icon-bubble calls this.open(cartLink)
- * - open() adds 'active' class via requestAnimationFrame
+ * Works for both cart implementations: Rebuy installs an early click handler
+ * on #cart-icon-bubble that opens `.rebuy-cart`, and Dawn's native
+ * <cart-drawer> binds the same icon to open itself. Idempotent: if a cart is
+ * already open (e.g. a real ATC click auto-opened it), the click is skipped so
+ * we don't toggle it closed.
  */
 export async function openCartDrawer(page: Page): Promise<void> {
   await killPopups(page);
   await page.waitForTimeout(500);
   await killPopups(page);
 
-  const cartIcon = page.locator(selectors.cartIcon);
-  await cartIcon.waitFor({ state: 'visible', timeout: 20000 });
+  const alreadyOpen = await page.evaluate(() => {
+    const rebuy = document.querySelector('.rebuy-cart');
+    if (rebuy?.classList.contains('is-visible')) return true;
+    const drawer = document.querySelector('cart-drawer');
+    return !!drawer && (drawer.classList.contains('active') || drawer.classList.contains('animate'));
+  });
 
-  await killPopups(page);
-  await cartIcon.click({ force: true });
+  if (!alreadyOpen) {
+    const cartIcon = page.locator(selectors.cartIcon);
+    await cartIcon.waitFor({ state: 'visible', timeout: 20000 });
+    await cartIcon.click({ force: true });
+  }
 
   await waitForCartDrawerReady(page);
 }
@@ -700,21 +708,14 @@ export async function openHbPopup(page: Page): Promise<void> {
       }
     }
 
-    const cartDrawerOpened = await page.evaluate(() => {
-      const drawer = document.querySelector('cart-drawer');
-      return drawer && drawer.classList.contains('active');
-    });
-
+    // A no-options candidate can add directly to cart and leave the Rebuy
+    // Smart Cart open over the grid; reset popup + cart before the next try.
     await page.evaluate(() => {
-      const popup = document.querySelector('[js-hb-popup]');
-      popup?.classList.remove('active');
-
-      const drawer = document.querySelector('cart-drawer') as any;
-      if (drawer && typeof drawer.close === 'function') drawer.close();
-      else drawer?.classList.remove('active', 'animate');
+      document.querySelector('[js-hb-popup]')?.classList.remove('active');
+      const close = document.querySelector('.rebuy-cart__flyout-close') as HTMLElement | null;
+      if (document.querySelector('.rebuy-cart.is-visible') && close) close.click();
     });
-
-    if (cartDrawerOpened) await page.waitForTimeout(500);
+    await page.waitForTimeout(300);
   }
 
   throw new Error('HB Popup: Failed to open popup after trying all candidate products');
@@ -752,7 +753,7 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
   const popupAtcButton = page.locator(selectors.hbPopupAtcButton);
   await popupAtcButton.waitFor({ state: 'visible', timeout: 15000 });
 
-  // Wait for form to be ready with variant selection
+  // Wait for form to be ready with variant selection.
   // The popup auto-selects a variant via initHbPopupQuarterlyAndBanner() in global.js
   await page.waitForFunction(() => {
     const form = document.querySelector('#product-form-hb-popup-ajax');
@@ -764,193 +765,38 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
   await page.waitForTimeout(500);
   await killPopups(page);
 
-  const syntheticPopup = await page.locator('[js-hb-popup][data-test-synthetic="true"]').count().then(count => count > 0);
-  if (syntheticPopup) {
-    const opened = await page.evaluate(() => {
-      const popup = document.querySelector('[js-hb-popup]');
-      popup?.classList.remove('active');
+  // Strategy 1: Direct cart API using the popup form's selected variant.
+  let success = await addToCartViaAPI(page, '#product-form-hb-popup-ajax');
 
-      const cartDrawer = document.querySelector('cart-drawer') as any;
-      if (!cartDrawer) return false;
-      cartDrawer.querySelector('cart-drawer-items')?.classList.remove('is-empty');
-      cartDrawer.classList.remove('is-empty');
-      cartDrawer.querySelector('#CartDrawer-Checkout')?.removeAttribute('disabled');
-      if (typeof cartDrawer.open === 'function') cartDrawer.open();
-      else cartDrawer.classList.add('active');
-      return true;
-    });
-
-    if (!opened) throw new Error('HB Popup ATC: Failed to open cart drawer from synthetic popup');
-    await waitForCartDrawerReady(page);
-    return;
-  }
-
-  // Get the variant ID for logging/debugging
-  const variantId = await page.evaluate(() => {
-    const form = document.querySelector('#product-form-hb-popup-ajax');
-    const variantInput = form?.querySelector('input[name="id"]') as HTMLInputElement;
-    return variantInput?.value || null;
-  });
-
-  if (!variantId) {
-    throw new Error('HB Popup ATC: No variant selected in form');
-  }
-
-  let success = false;
-
-  // Strategy 1: Direct API call (most reliable in CI)
-  success = await addToCartViaAPI(page, '#product-form-hb-popup-ajax');
-
-  // Strategy 2: Button click with response listener
+  // Strategy 2: Real button click (exercises the product-form.js ATC path).
   if (!success) {
-    // Wait for button to be enabled (not aria-disabled)
     await page.waitForFunction(() => {
       const btn = document.querySelector('#ProductSubmitButton-hb-popup-ajax');
       return btn && btn.getAttribute('aria-disabled') !== 'true' && !btn.classList.contains('loading');
     }, { timeout: 10000 }).catch(() => {});
 
-    // Set up response listener BEFORE clicking
     const responsePromise = page.waitForResponse(
       r => r.url().includes('/cart/add') && r.status() === 200,
       { timeout: 20000 }
     ).catch(() => null);
 
-    // Click the button
     await popupAtcButton.click({ force: true });
-
-    // Wait for response
     const response = await responsePromise;
     success = response !== null;
-
-    if (success) {
-      // Wait for popup to close and drawer to open naturally
-      await page.waitForTimeout(500);
-    }
-  }
-
-  // Strategy 3: Last resort - direct fetch API with manual drawer open
-  if (!success) {
-    success = await page.evaluate(async (vid) => {
-      try {
-        // Direct cart API call
-        const response = await fetch('/cart/add.js', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify({
-            id: parseInt(vid, 10),
-            quantity: 1
-          }),
-        });
-
-        if (!response.ok) return false;
-
-        // Close the popup
-        const popup = document.querySelector('[js-hb-popup]');
-        if (popup) {
-          popup.classList.remove('active');
-        }
-
-        // Race-prevention: poll /cart.js until item_count > 0 before sections fetch.
-        for (let i = 0; i < 10; i++) {
-          try {
-            const cartResp = await fetch('/cart.js');
-            if (cartResp.ok) {
-              const cart = await cartResp.json();
-              if (cart.item_count && cart.item_count > 0) break;
-            }
-          } catch (_) { /* retry */ }
-          await new Promise(r => setTimeout(r, 150));
-        }
-
-        // Fetch cart sections and open drawer
-        const cartDrawer = document.querySelector('cart-drawer') as any;
-        if (cartDrawer) {
-          const sectionsResponse = await fetch('/cart?sections=cart-drawer,cart-icon-bubble');
-          if (sectionsResponse.ok) {
-            const sections = await sectionsResponse.json();
-
-            // Update cart drawer content
-            if (sections['cart-drawer']) {
-              const parser = new DOMParser();
-              const doc = parser.parseFromString(sections['cart-drawer'], 'text/html');
-              const newContent = doc.querySelector('.drawer__inner');
-              const currentContent = cartDrawer.querySelector('.drawer__inner');
-              if (newContent && currentContent) {
-                currentContent.innerHTML = newContent.innerHTML;
-              }
-            }
-
-            // Update cart icon bubble - parity with addToCartViaAPI; tests
-            // asserting cart-count badge after HB popup ATC need this.
-            if (sections['cart-icon-bubble']) {
-              const bubble = document.querySelector('#cart-icon-bubble');
-              if (bubble) {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(sections['cart-icon-bubble'], 'text/html');
-                const newBubble = doc.querySelector('#cart-icon-bubble');
-                if (newBubble) {
-                  bubble.innerHTML = newBubble.innerHTML;
-                }
-              }
-            }
-          }
-
-          // Belt-and-suspenders: clear is-empty on inner cart-drawer-items too.
-          const innerItems = cartDrawer.querySelector('cart-drawer-items');
-          if (innerItems) innerItems.classList.remove('is-empty');
-          cartDrawer.classList.remove('is-empty');
-          // Clear disabled on the checkout button (liquid:1761).
-          const checkoutBtn = cartDrawer.querySelector('#CartDrawer-Checkout');
-          if (checkoutBtn) checkoutBtn.removeAttribute('disabled');
-          if (typeof cartDrawer.open === 'function') {
-            cartDrawer.open();
-          } else {
-            cartDrawer.classList.add('active');
-          }
-        }
-
-        return true;
-      } catch (e) {
-        console.error('HB Popup ATC fallback error:', e);
-        return false;
-      }
-    }, variantId);
   }
 
   if (!success) {
-    success = await page.evaluate(() => {
-      const popup = document.querySelector('[js-hb-popup]');
-      popup?.classList.remove('active');
-
-      const cartDrawer = document.querySelector('cart-drawer') as any;
-      if (!cartDrawer) return false;
-
-      cartDrawer.querySelector('cart-drawer-items')?.classList.remove('is-empty');
-      cartDrawer.classList.remove('is-empty');
-      cartDrawer.querySelector('#CartDrawer-Checkout')?.removeAttribute('disabled');
-
-      if (typeof cartDrawer.open === 'function') cartDrawer.open();
-      else cartDrawer.classList.add('active');
-
-      return true;
-    });
+    throw new Error('HB Popup ATC: Failed to add product to cart');
   }
 
-  if (!success) {
-    throw new Error('HB Popup ATC: Failed to add product to cart after all strategies');
-  }
-
-  // Wait for cart drawer to open
-  await page.waitForFunction(() => {
-    const drawer = document.querySelector('cart-drawer');
-    return drawer && drawer.classList.contains('active');
-  }, { timeout: 15000 });
-
-  // Wait for drawer to be fully ready (active + not opening)
-  await waitForCartDrawerReady(page);
+  // Close the popup, refresh the native drawer (renderContents mirror), then
+  // surface whichever cart opened and confirm it holds the new item.
+  await page.evaluate(() => {
+    document.querySelector('[js-hb-popup]')?.classList.remove('active');
+  });
+  await refreshNativeCartDrawer(page);
+  await openCartDrawer(page);
+  await waitForCartItems(page);
 }
 
 /**
