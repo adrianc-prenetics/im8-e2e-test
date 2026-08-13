@@ -35,7 +35,7 @@ Results: https://github.com/adrianc-prenetics/im8-e2e-test/actions
 | `tests/critical/sticky-atc-bar.spec.ts` | ATC still present after scroll |
 | `tests/critical/pdp-gallery-image-budget.spec.ts` | Thumbs ≤1426 and closed lightbox `display:none` (named CI step) + hero ≤1445 (fail-closed until theme publishes) |
 
-Green gate is `npx playwright test --project=chromium --grep-invert "@fail-closed-until-theme"`. That invert is the `@fail-closed-until-theme` tag, not a title grep. The passing thumbs/lightbox check runs after the gate as `Run PDP gallery image budget`. The hero 1445 cap stays fail-closed (`Run fail-closed PDP hero image cap`, `continue-on-error`) so a known live 1946w hero does not hide other failures. When the theme ships, fold the hero step back into the gate.
+Green gate is `npx playwright test --project=chromium --grep-invert "@fail-closed-until-theme|@pdp-image-budget"`. Invert is tags, not a title grep. The passing thumbs/lightbox check runs after the gate as `Run PDP gallery image budget` (first visit of that test, so it is not skipped after the gate already hit the PDP). The hero 1445 cap stays fail-closed (`Run fail-closed PDP hero image cap`, `continue-on-error`) so a known live 1946w hero does not hide other failures. When the theme ships, fold the hero step back into the gate.
 
 ## Local
 

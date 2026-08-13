@@ -37,7 +37,7 @@ jobs:
 
       - name: Run Playwright green gate
         id: gate
-        run: npx playwright test --project=chromium --grep-invert "@fail-closed-until-theme"
+        run: npx playwright test --project=chromium --grep-invert "@fail-closed-until-theme|@pdp-image-budget"
         env:
           CI: true
           SHOPIFY_SIGNATURE: ${{ secrets.SHOPIFY_SIGNATURE }}
