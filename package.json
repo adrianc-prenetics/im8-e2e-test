@@ -10,7 +10,8 @@
     "test:debug": "playwright test --debug",
     "test:chromium": "playwright test --project=chromium",
     "test:gate": "playwright test --project=chromium --grep-invert \"@fail-closed-until-theme\"",
-    "test:budget": "playwright test --project=chromium tests/critical/pdp-gallery-image-budget.spec.ts -g \"pinch-zoom\"",
+    "test:budget": "playwright test --project=chromium tests/critical/pdp-gallery-image-budget.spec.ts -g \"gallery thumbs stay under decode budget\"",
+    "test:hero-cap": "playwright test --project=chromium tests/critical/pdp-gallery-image-budget.spec.ts --grep \"@fail-closed-until-theme\" --retries=0",
     "test:mobile": "playwright test --project=mobile",
     "report": "playwright show-report"
   },

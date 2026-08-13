@@ -2,14 +2,13 @@ import { test, expect } from '@playwright/test';
 import { fastVisit } from '../helpers/test-utils';
 
 /**
- * Live PDP image budget — pinch-zoom must not decode 2K–4K gallery/hero srcset.
- *
- * Caps are fail-closed (thumbs 1426, hero/lightbox 1445). Production still
- * serves hero 1946w until the theme fix publishes, so the assertion is
- * expected red. CI runs this after the green gate with continue-on-error.
- * Tagged `@fail-closed-until-theme` so the gate does not include it. Do not
- * skip; do not silent `test.fail()`. When the theme ships, fold the step
- * back into the gate.
+ * Live PDP image budget — gallery thumbs and closed lightbox must not decode
+ * 2K–4K srcset. Hero stays fail-closed at 1445w until the theme cap publishes
+ * (prod still serves 1946w). CI runs the passing thumbs/lightbox check as a
+ * named step, then the hero cap with continue-on-error. Tagged
+ * `@fail-closed-until-theme` so the green gate does not include the known-red
+ * hero assertion. Do not skip; do not silent `test.fail()`. When the theme
+ * ships, fold the hero step back into the gate.
  *
  * Live probe 2026-08-13:
  *   {"thumbCount":18,"thumbMax":416,"heroMax":1946,"lightboxMax":0,"lightboxDisplay":"none"}
@@ -59,24 +58,29 @@ test.describe('PDP mobile gallery image budget', () => {
     await fastVisit(page, '/products/essentials-pro');
   });
 
-  test('Essentials Pro gallery is on the page', async ({ page }) => {
-    const budget = await readGalleryBudget(page);
-    expect(budget.thumbCount, JSON.stringify(budget)).toBeGreaterThan(0);
-    await expect(page.locator('body')).toBeVisible();
-  });
-
-  // Tagged out of the green gate. Caps are the real long-term gate, not a skip.
-  test('pinch-zoom must not decode 2K–4K gallery/hero srcset (iOS tab-kill)', {
-    tag: '@fail-closed-until-theme',
+  test('gallery thumbs stay under decode budget and closed lightbox is not decoded', {
+    tag: '@pdp-image-budget',
   }, async ({ page }) => {
     const budget = await readGalleryBudget(page);
     expect(budget.thumbCount, JSON.stringify(budget)).toBeGreaterThan(0);
+    // Thumbs are ~52px. 1426w is the theme cap after the srcset fix.
+    expect(budget.thumbMax, JSON.stringify(budget)).toBeLessThanOrEqual(1426);
     // Closed lightbox must not be display:block — visibility:hidden still decodes.
     expect(budget.lightboxDisplay, JSON.stringify(budget)).toBe('none');
-    // Thumbs are ~52px. 1426w is the theme cap after the pinch-zoom fix.
-    expect(budget.thumbMax, JSON.stringify(budget)).toBeLessThanOrEqual(1426);
-    // Fail-closed: prod hero is still 1946w (2026-08-13). This is the defect.
-    expect(budget.heroMax, JSON.stringify(budget)).toBeLessThanOrEqual(1445);
     expect(budget.lightboxMax, JSON.stringify(budget)).toBeLessThanOrEqual(1445);
+  });
+
+  test.describe('fail-closed hero cap', () => {
+    test.describe.configure({ retries: 0 });
+
+    // Tagged out of the green gate. Cap is the real long-term gate, not a skip.
+    test('hero srcset must stay at or under 1445w', {
+      tag: '@fail-closed-until-theme',
+    }, async ({ page }) => {
+      const budget = await readGalleryBudget(page);
+      expect(budget.thumbCount, JSON.stringify(budget)).toBeGreaterThan(0);
+      // Fail-closed: prod hero is still 1946w (2026-08-13). This is the defect.
+      expect(budget.heroMax, JSON.stringify(budget)).toBeLessThanOrEqual(1445);
+    });
   });
 });

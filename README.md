@@ -33,9 +33,9 @@ Results: https://github.com/adrianc-prenetics/im8-e2e-test/actions
 | `tests/critical/mobile-navigation.spec.ts` | Hamburger, mobile drawer |
 | `tests/critical/hb-popup-atc.spec.ts` | Collection quick-add popup |
 | `tests/critical/sticky-atc-bar.spec.ts` | ATC still present after scroll |
-| `tests/critical/pdp-gallery-image-budget.spec.ts` | Gallery exists (green gate) + srcset caps (known live defect until theme pinch-zoom publishes) |
+| `tests/critical/pdp-gallery-image-budget.spec.ts` | Thumbs ≤1426 and closed lightbox `display:none` (named CI step) + hero ≤1445 (fail-closed until theme publishes) |
 
-Green gate is `npx playwright test --project=chromium --grep-invert "@fail-closed-until-theme"`. The pinch-zoom srcset caps (hero/thumb/lightbox 1445/1426/1445) stay fail-closed and run after the gate as the named step `Run pinch-zoom PDP image budget` (`continue-on-error`) so a known live 1946w hero does not hide other failures. When the theme ships, fold that step back into the gate.
+Green gate is `npx playwright test --project=chromium --grep-invert "@fail-closed-until-theme"`. That invert is the `@fail-closed-until-theme` tag, not a title grep. The passing thumbs/lightbox check runs after the gate as `Run PDP gallery image budget`. The hero 1445 cap stays fail-closed (`Run fail-closed PDP hero image cap`, `continue-on-error`) so a known live 1946w hero does not hide other failures. When the theme ships, fold the hero step back into the gate.
 
 ## Local
 

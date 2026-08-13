@@ -73,12 +73,21 @@ jobs:
           
           🔗 View: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
+      - name: Run PDP gallery image budget
+        if: success()
+        run: npx playwright test --project=chromium tests/critical/pdp-gallery-image-budget.spec.ts -g "gallery thumbs stay under decode budget"
+        env:
+          CI: true
+          SHOPIFY_SIGNATURE: ${{ secrets.SHOPIFY_SIGNATURE }}
+          SHOPIFY_SIGNATURE_INPUT: ${{ secrets.SHOPIFY_SIGNATURE_INPUT }}
+          SHOPIFY_SIGNATURE_AGENT: ${{ secrets.SHOPIFY_SIGNATURE_AGENT }}
+
       # Fail-closed until live hero srcset ≤1445. continue-on-error until the
-      # theme ships (prod still 1946w). Runs after the green gate.
-      - name: Run pinch-zoom PDP image budget
+      # theme ships (prod still 1946w). Runs after the green thumbs/lightbox check.
+      - name: Run fail-closed PDP hero image cap
         if: success()
         continue-on-error: true
-        run: npx playwright test --project=chromium tests/critical/pdp-gallery-image-budget.spec.ts -g "pinch-zoom"
+        run: npx playwright test --project=chromium tests/critical/pdp-gallery-image-budget.spec.ts --grep "@fail-closed-until-theme" --retries=0
         env:
           CI: true
           SHOPIFY_SIGNATURE: ${{ secrets.SHOPIFY_SIGNATURE }}
