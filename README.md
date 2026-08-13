@@ -8,15 +8,20 @@ This automated testing suite continuously monitors the IM8 Health storefront (im
 
 ## 🕐 When Tests Run
 
+Playwright is the gate. Cypress is legacy (manual dispatch only).
+
 | Trigger | Frequency |
 |---------|-----------|
-| **Scheduled** | Every hour (24 runs/day) |
-| **Every push to main** | Automatically on each deployment |
-| **Every pull request** | Before code is merged |
-| **Manual trigger** | On-demand via GitHub Actions |
+| **Scheduled** | Daily 06:30 UTC |
+| **Every push to main** | Yes |
+| **Every pull request** | Yes |
+| **Manual trigger** | Actions → Playwright E2E Tests → Run workflow |
 
-Tests complete in **~4-5 minutes** and results are visible at:
-https://github.com/adrianc-prenetics/im8-e2e-test/actions
+Public GitHub repos disable scheduled workflows after 60 days with no push. A commit or Actions enable click resets that.
+
+For fewer Shopify bot challenges, add Web Bot Auth secrets (`SHOPIFY_SIGNATURE`, `SHOPIFY_SIGNATURE_INPUT`, `SHOPIFY_SIGNATURE_AGENT`) from Shopify admin → Online Store → Preferences → Crawler access (max 3 months, then rotate).
+
+Results: https://github.com/adrianc-prenetics/im8-e2e-test/actions
 
 ---
 

@@ -34,6 +34,9 @@ jobs:
         run: npx playwright test --project=chromium
         env:
           CI: true
+          SHOPIFY_SIGNATURE: ${{ secrets.SHOPIFY_SIGNATURE }}
+          SHOPIFY_SIGNATURE_INPUT: ${{ secrets.SHOPIFY_SIGNATURE_INPUT }}
+          SHOPIFY_SIGNATURE_AGENT: ${{ secrets.SHOPIFY_SIGNATURE_AGENT }}
 
       - name: Upload Playwright Report
         uses: actions/upload-artifact@v4
