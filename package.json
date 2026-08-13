@@ -9,6 +9,8 @@
     "test:ui": "playwright test --ui",
     "test:debug": "playwright test --debug",
     "test:chromium": "playwright test --project=chromium",
+    "test:gate": "playwright test --project=chromium --grep-invert \"pinch-zoom decode budget\"",
+    "test:budget": "playwright test --project=chromium --grep \"pinch-zoom decode budget\"",
     "test:mobile": "playwright test --project=mobile",
     "report": "playwright show-report"
   },

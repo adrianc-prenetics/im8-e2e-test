@@ -31,8 +31,8 @@ test.describe('Checkout Flow - Critical Interactions', () => {
     // Cart update can take time — button starts disabled with "$0" until cart JS updates it
     // Either cart's checkout control; .first() guards both carts rendering one.
     const checkoutButton = page.locator(selectors.checkoutButton).first();
-    await expect(checkoutButton).toBeAttached({ timeout: 10000 });
-    await expect(checkoutButton).toBeEnabled({ timeout: 15000 });
+    await expect(checkoutButton).toBeAttached({ timeout: 8000 });
+    await expect(checkoutButton).toBeEnabled({ timeout: 10000 });
     
     // Step 5: Click checkout button
     await killPopups(page);
@@ -40,7 +40,7 @@ test.describe('Checkout Flow - Critical Interactions', () => {
     
     // Step 6: Verify navigation to checkout or cart page
     // Shopify may redirect to /cart first, then checkout
-    await page.waitForURL(/checkout|\/cart/, { timeout: 30000 });
+    await page.waitForURL(/checkout|\/cart/, { timeout: 20000 });
     
     const url = page.url();
     expect(url).toMatch(/checkout|\/cart/);

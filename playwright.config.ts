@@ -13,10 +13,10 @@ export default defineConfig({
   /* Fail the build on CI if you accidentally left test.only in the source code */
   forbidOnly: !!process.env.CI,
 
-  /* Retry failed tests */
-  retries: process.env.CI ? 2 : 1,
+  /* Retry failed tests. CI: 1 (2 used to triple a 90s miss). Local: 0. */
+  retries: process.env.CI ? 1 : 0,
 
-  /* Limit to 1 worker in CI to avoid rate limiting on Shopify store */
+  /* Limit to 1 worker to avoid rate limiting on Shopify store */
   workers: 1,
 
   /* Reporter to use */
@@ -54,15 +54,15 @@ export default defineConfig({
     /* Video on failure */
     video: 'on-first-retry',
 
-    /* Default timeout for actions - generous for CI headless Chrome */
-    actionTimeout: 30000,
+    /* Default timeout for actions */
+    actionTimeout: 15000,
 
     /* Default timeout for navigation */
-    navigationTimeout: 45000,
+    navigationTimeout: 20000,
   },
 
-  /* Global timeout for each test - increased for reliability */
-  timeout: 90000,
+  /* Per-test budget: fail fast instead of sitting on a 90s hang */
+  timeout: 60000,
 
   /* Configure projects for major browsers */
   projects: [

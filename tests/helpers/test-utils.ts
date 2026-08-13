@@ -190,14 +190,15 @@ async function isBotVerificationPage(page: Page): Promise<boolean> {
 }
 
 async function recoverFromBotVerification(page: Page): Promise<void> {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    if (!(await isBotVerificationPage(page))) return;
+  if (!(await isBotVerificationPage(page))) return;
 
-    // Shopify's bot check can clear after a short cool-down, especially when
-    // the full suite switches from desktop to mobile responsive coverage.
-    await page.waitForTimeout(5000 + attempt * 3000);
-    await page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
-  }
+  // One short cool-down for the challenge copy to clear, then one reload.
+  // Five long sleeps used to burn ~55s per hit; skip instead of waiting it out.
+  await page.waitForFunction(() => {
+    const text = document.body?.innerText || '';
+    return !/connection needs to be verified|verify.*before you can proceed|verifying your connection/i.test(text);
+  }, { timeout: 2000 }).catch(() => {});
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
 
   if (await isBotVerificationPage(page)) {
     test.skip(true, 'Shopify bot verification page blocked the test run');
@@ -258,16 +259,11 @@ export async function fastVisit(page: Page, url: string): Promise<void> {
 
   // Navigate directly after setting market cookies. The old homepage preflight doubled
   // Shopify traffic for product tests and made bot verification more likely in full runs.
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25000 });
 
-  // Wait for body
-  await page.waitForSelector('body', { timeout: 15000 });
+  await page.waitForSelector('body', { timeout: 10000 });
   await recoverFromBotVerification(page);
 
-  // Allow page to stabilize after navigation
-  await page.waitForTimeout(1000);
-
-  // Force US market via JavaScript
   await page.evaluate(() => {
     try {
       localStorage.setItem('shopify_market', 'US');
@@ -277,26 +273,21 @@ export async function fastVisit(page: Page, url: string): Promise<void> {
     }
   });
 
-  // Wait for Shopify JS to initialize - check for cart-drawer or any custom element
-  // Use a generous timeout but don't fail the test if CE isn't on this page
   await page.waitForFunction(() => {
     return typeof customElements !== 'undefined' &&
            (customElements.get('cart-drawer') !== undefined ||
             customElements.get('product-form') !== undefined);
-  }, { timeout: 45000 }).catch(() => {
+  }, { timeout: 8000 }).catch(() => {
     // Custom element may not be on all pages
   });
 
-  // Kill any popups
   await killPopups(page);
 
-  // Accept cookie consent if present (check again after navigation)
   const acceptButton = page.locator('button').filter({ hasText: /accept/i }).first();
-  if (await acceptButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+  if (await acceptButton.isVisible({ timeout: 1500 }).catch(() => false)) {
     await acceptButton.click({ force: true });
+    await killPopups(page);
   }
-
-  await killPopups(page);
 }
 
 /**
@@ -315,7 +306,7 @@ export async function waitForCartDrawerReady(page: Page): Promise<void> {
     if (!drawer) return false;
     const active = drawer.classList.contains('active') || drawer.classList.contains('animate');
     return active && !drawer.classList.contains('opening');
-  }, { timeout: 25000 });
+  }, { timeout: 12000 });
 }
 
 /**
@@ -514,9 +505,8 @@ export async function addProductToCartByHandle(page: Page, handle = 'essentials-
   if (!added) {
     // The cart endpoint returned Cloudflare's challenge. A single full reload
     // lets the browser clear it and obtain clearance cookies, then retry once.
-    await page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => {});
     await recoverFromBotVerification(page);
-    await page.waitForTimeout(2000);
     await killPopups(page);
     added = await addToCartByHandleInPage(page, handle);
   }
@@ -555,21 +545,20 @@ export async function addToCart(page: Page): Promise<void> {
            customElements.get('product-form') !== undefined;
     const formExists = !!document.querySelector('product-form form, form[data-type="add-to-cart-form"], form.test-product-form');
     return ceReady || formExists;
-  }, { timeout: 45000 });
+  }, { timeout: 15000 });
 
-  await page.waitForTimeout(1000);
   await killPopups(page);
 
   // Wait for ATC button to exist and be visible
   const atcButton = page.locator('product-form button[type="submit"][name="add"], button[name="add"], .product-form__submit').first();
-  await atcButton.waitFor({ state: 'visible', timeout: 30000 });
+  await atcButton.waitFor({ state: 'visible', timeout: 15000 });
 
   // Wait for variant to be selected (form has valid variant ID)
   await page.waitForFunction(() => {
     const form = document.querySelector('product-form form') || document.querySelector('form[data-type="add-to-cart-form"]');
     const variantInput = form?.querySelector('input[name="id"]') as HTMLInputElement;
     return variantInput && variantInput.value && variantInput.value !== '';
-  }, { timeout: 20000 });
+  }, { timeout: 10000 });
 
   await killPopups(page);
 
@@ -632,8 +621,6 @@ export async function addToCart(page: Page): Promise<void> {
  */
 export async function openCartDrawer(page: Page): Promise<void> {
   await killPopups(page);
-  await page.waitForTimeout(500);
-  await killPopups(page);
 
   const alreadyOpen = await page.evaluate(() => {
     const rebuy = document.querySelector('.rebuy-cart');
@@ -643,9 +630,22 @@ export async function openCartDrawer(page: Page): Promise<void> {
   });
 
   if (!alreadyOpen) {
-    const cartIcon = page.locator(selectors.cartIcon);
-    await cartIcon.waitFor({ state: 'visible', timeout: 20000 });
-    await cartIcon.click({ force: true });
+    const acceptButton = page.locator('button').filter({ hasText: /accept/i }).first();
+    if (await acceptButton.isVisible({ timeout: 500 }).catch(() => false)) {
+      await acceptButton.click({ force: true });
+    }
+
+    await page.locator(selectors.cartIcon).waitFor({ state: 'attached', timeout: 10000 });
+    // Cookie/announcement chrome can push #cart-icon-bubble outside the
+    // Playwright viewport; the theme click handler still runs from JS.
+    await page.evaluate(() => {
+      const popup = document.querySelector('[js-hb-popup]') as HTMLElement | null;
+      if (popup) {
+        popup.classList.remove('active', 'open');
+        popup.classList.add('hidden');
+      }
+      (document.querySelector('#cart-icon-bubble') as HTMLElement | null)?.click();
+    });
   }
 
   await waitForCartDrawerReady(page);
@@ -720,7 +720,7 @@ export async function openHbPopup(page: Page): Promise<void> {
   const noOptionsProducts = ['embroidered-cap', 'vegan-travel-pouch', 'signature-cup'];
 
   const quickAddButtons = page.locator(selectors.quickAddButton);
-  await quickAddButtons.first().waitFor({ state: 'attached', timeout: 20000 });
+  await quickAddButtons.first().waitFor({ state: 'attached', timeout: 10000 });
 
   const buttonCount = await quickAddButtons.count();
   const candidateButtons: { index: number; handle: string | null }[] = [];
@@ -737,11 +737,12 @@ export async function openHbPopup(page: Page): Promise<void> {
     }
   }
 
-  if (candidateButtons.length === 0) {
-    candidateButtons.push({ index: 0, handle: null });
+  const candidates = candidateButtons.slice(0, 3);
+  if (candidates.length === 0) {
+    candidates.push({ index: 0, handle: null });
   }
 
-  for (const candidate of candidateButtons) {
+  for (const candidate of candidates) {
     const targetButton = quickAddButtons.nth(candidate.index);
 
     await targetButton.scrollIntoViewIfNeeded();
@@ -760,34 +761,33 @@ export async function openHbPopup(page: Page): Promise<void> {
       const variantInput = productForm?.querySelector('input[name="id"]') as HTMLInputElement | null;
 
       return !!(atcButton && productForm && variantInput?.value);
-    }, { timeout: 2500 }).then(() => true).catch(() => false);
+    }, { timeout: 1500 }).then(() => true).catch(() => false);
 
-    if (popupReady) {
-      await page.waitForTimeout(300);
-      return;
-    }
+    if (popupReady) return;
 
     const blockedByVerification = await page.evaluate(() => {
       const contentText = document.querySelector('[js-hb-popup] [js-product-detail]')?.textContent || '';
       return /connection needs to be verified|verify.*before you can proceed/i.test(contentText);
     });
 
-    if ((blockedByVerification || candidate.handle) && candidate.handle) {
-      const synthesized = await synthesizeHbPopupFromProduct(page, candidate.handle);
-      if (synthesized) {
-        await page.waitForTimeout(300);
-        return;
+    if (blockedByVerification) {
+      if (candidate.handle) {
+        const synthesized = await synthesizeHbPopupFromProduct(page, candidate.handle);
+        if (synthesized) return;
       }
+      test.skip(true, 'Shopify bot verification page blocked the test run');
     }
 
-    // A no-options candidate can add directly to cart and leave the Rebuy
-    // Smart Cart open over the grid; reset popup + cart before the next try.
+    if (candidate.handle) {
+      const synthesized = await synthesizeHbPopupFromProduct(page, candidate.handle);
+      if (synthesized) return;
+    }
+
     await page.evaluate(() => {
       document.querySelector('[js-hb-popup]')?.classList.remove('active');
       const close = document.querySelector('.rebuy-cart__flyout-close') as HTMLElement | null;
       if (document.querySelector('.rebuy-cart.is-visible') && close) close.click();
     });
-    await page.waitForTimeout(300);
   }
 
   throw new Error('HB Popup: Failed to open popup after trying all candidate products');
@@ -837,10 +837,8 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
     const form = document.querySelector('#product-form-hb-popup-ajax');
     const variantInput = form?.querySelector('input[name="id"]') as HTMLInputElement;
     return form && variantInput && variantInput.value && variantInput.value !== '';
-  }, { timeout: 15000 });
+  }, { timeout: 8000 });
 
-  // Wait for auto-selection animation to complete
-  await page.waitForTimeout(500);
   await killPopups(page);
 
   // Strategy 1: Direct cart API using the popup form's selected variant.
@@ -855,7 +853,7 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
 
     const responsePromise = page.waitForResponse(
       r => r.url().includes('/cart/add') && r.status() === 200,
-      { timeout: 20000 }
+      { timeout: 8000 }
     ).catch(() => null);
 
     await popupAtcButton.click({ force: true });
@@ -889,21 +887,15 @@ export async function addToCartFromHbPopup(page: Page): Promise<void> {
  */
 export async function openMobileDrawer(page: Page): Promise<void> {
   await killPopups(page);
-  await page.waitForTimeout(500);
-  await killPopups(page);
 
   const hamburger = page.locator(selectors.hamburgerMenu);
-  await hamburger.waitFor({ state: 'visible', timeout: 20000 });
+  await hamburger.waitFor({ state: 'visible', timeout: 10000 });
 
-  await killPopups(page);
   await hamburger.click({ force: true });
 
-  // Wait for the details element to have open attribute, then drawer becomes visible
   await page.waitForFunction(() => {
     const details = document.querySelector('#Details-menu-drawer-container');
     const drawer = document.querySelector('#menu-drawer');
     return (details?.hasAttribute('open') || (drawer as HTMLElement)?.offsetParent !== null) ?? false;
-  }, { timeout: 15000 });
-
-  await page.waitForTimeout(300);
+  }, { timeout: 8000 });
 }

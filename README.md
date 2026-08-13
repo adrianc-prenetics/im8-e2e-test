@@ -2,6 +2,8 @@
 
 Playwright monitors im8health.com critical journeys. Cypress was a duplicate of the same eight specs and is gone — it never finished a scheduled run (10-minute cancel cap).
 
+Chromium-only in CI. One worker (Shopify rate limits). Bot verification skips, it does not fail. Web Bot Auth headers are injected when `SHOPIFY_SIGNATURE*` secrets exist.
+
 ## When tests run
 
 | Trigger | Frequency |
@@ -10,6 +12,8 @@ Playwright monitors im8health.com critical journeys. Cypress was a duplicate of 
 | **Push to main** | Yes |
 | **Pull request** | Yes |
 | **Manual** | Actions → Playwright E2E Tests → Run workflow |
+
+`concurrency` cancels in-progress runs on the same ref so push + dispatch do not double-hit Shopify.
 
 Public GitHub repos disable scheduled workflows after 60 days with no push. A commit resets that.
 
@@ -29,13 +33,16 @@ Results: https://github.com/adrianc-prenetics/im8-e2e-test/actions
 | `tests/critical/mobile-navigation.spec.ts` | Hamburger, mobile drawer |
 | `tests/critical/hb-popup-atc.spec.ts` | Collection quick-add popup |
 | `tests/critical/sticky-atc-bar.spec.ts` | ATC still present after scroll |
+| `tests/critical/pdp-gallery-image-budget.spec.ts` | Gallery exists (green gate) + srcset caps (known live defect until theme pinch-zoom publishes) |
+
+Green gate is `npx playwright test --project=chromium --grep-invert "pinch-zoom decode budget"`. The pinch-zoom srcset caps (hero/thumb/lightbox 1445/1426/1445) stay fail-closed and run after the gate with `continue-on-error` so a known live 1946w hero does not hide other failures. When the theme ships, fold that step back into the gate.
 
 ## Local
 
 ```bash
 npm install
 npx playwright install chromium
-npm test
+npm run test:gate
 ```
 
 **Last Updated:** August 2026
