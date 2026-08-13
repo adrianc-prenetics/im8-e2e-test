@@ -35,6 +35,16 @@ jobs:
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium
 
+      # First storefront hit in the job so this named step actually runs
+      # (a later visit after the gate is often bot-skipped).
+      - name: Run PDP gallery image budget
+        run: npx playwright test --project=chromium tests/critical/pdp-gallery-image-budget.spec.ts -g "gallery thumbs stay under decode budget"
+        env:
+          CI: true
+          SHOPIFY_SIGNATURE: ${{ secrets.SHOPIFY_SIGNATURE }}
+          SHOPIFY_SIGNATURE_INPUT: ${{ secrets.SHOPIFY_SIGNATURE_INPUT }}
+          SHOPIFY_SIGNATURE_AGENT: ${{ secrets.SHOPIFY_SIGNATURE_AGENT }}
+
       - name: Run Playwright green gate
         id: gate
         run: npx playwright test --project=chromium --grep-invert "@fail-closed-until-theme|@pdp-image-budget"
@@ -72,15 +82,6 @@ jobs:
           Commit: ${{ github.event.head_commit.message || github.sha }}
           
           🔗 View: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
-      - name: Run PDP gallery image budget
-        if: success()
-        run: npx playwright test --project=chromium tests/critical/pdp-gallery-image-budget.spec.ts -g "gallery thumbs stay under decode budget"
-        env:
-          CI: true
-          SHOPIFY_SIGNATURE: ${{ secrets.SHOPIFY_SIGNATURE }}
-          SHOPIFY_SIGNATURE_INPUT: ${{ secrets.SHOPIFY_SIGNATURE_INPUT }}
-          SHOPIFY_SIGNATURE_AGENT: ${{ secrets.SHOPIFY_SIGNATURE_AGENT }}
 
       # Fail-closed until live hero srcset ≤1445. continue-on-error until the
       # theme ships (prod still 1946w). Runs after the green thumbs/lightbox check.
