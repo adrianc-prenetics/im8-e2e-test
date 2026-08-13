@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { fastVisit } from '../helpers/test-utils';
 
 /**
- * Live PDP image budget — Danny 2026-08-13 Chrome/Safari iOS tab kill.
+ * Live PDP image budget — 2026-08-13 Chrome/Safari iOS tab kill.
  *
  * Pinch-zoom on Essentials Pro decoded 2K–4K gallery/lightbox candidates
  * (closed lightbox was still painted). This does not replace the theme fix.

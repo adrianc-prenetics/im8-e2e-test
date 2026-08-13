@@ -35,7 +35,7 @@ Results: https://github.com/adrianc-prenetics/im8-e2e-test/actions
 | `tests/critical/sticky-atc-bar.spec.ts` | ATC still present after scroll |
 | `tests/critical/pdp-gallery-image-budget.spec.ts` | Gallery exists (green gate) + srcset caps (known live defect until theme pinch-zoom publishes) |
 
-Green gate is `npx playwright test --project=chromium --grep-invert "pinch-zoom must not decode"`. The pinch-zoom srcset caps (hero/thumb/lightbox 1445/1426/1445) stay fail-closed and run after the gate with `continue-on-error` so a known live 1946w hero does not hide other failures. When the theme ships, fold that step back into the gate.
+Green gate is `npx playwright test --project=chromium --grep-invert "@fail-closed-until-theme"`. The pinch-zoom srcset caps (hero/thumb/lightbox 1445/1426/1445) stay fail-closed and run after the gate as the named step `Run pinch-zoom PDP image budget` (`continue-on-error`) so a known live 1946w hero does not hide other failures. When the theme ships, fold that step back into the gate.
 
 ## Local
 
