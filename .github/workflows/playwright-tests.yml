@@ -37,7 +37,7 @@ jobs:
 
       - name: Run Playwright green gate
         id: gate
-        run: npx playwright test --project=chromium --grep-invert "pinch-zoom decode budget"
+        run: npx playwright test --project=chromium --grep-invert "pinch-zoom must not decode"
         env:
           CI: true
           SHOPIFY_SIGNATURE: ${{ secrets.SHOPIFY_SIGNATURE }}
@@ -80,7 +80,7 @@ jobs:
       - name: Known-live pinch-zoom budget (expected red until theme ships)
         if: success()
         continue-on-error: true
-        run: npx playwright test --project=chromium --grep "pinch-zoom decode budget"
+        run: npx playwright test --project=chromium --grep "pinch-zoom must not decode"
         env:
           CI: true
           SHOPIFY_SIGNATURE: ${{ secrets.SHOPIFY_SIGNATURE }}

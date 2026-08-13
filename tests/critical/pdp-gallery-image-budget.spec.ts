@@ -12,7 +12,7 @@ import { fastVisit } from '../helpers/test-utils';
  * - The srcset caps below are fail-closed (1445 / 1426 / 1445). Production
  *   still serves hero 1946w until the theme pinch-zoom fix publishes, so the
  *   assertion is expected red. CI runs it after the green gate with
- *   continue-on-error (`--grep "pinch-zoom decode budget"`). Do not skip it
+ *   continue-on-error (`--grep "pinch-zoom must not decode"`). Do not skip it
  *   and do not silent `test.fail()` — when the theme ships, that step goes
  *   green and the grep split should be removed.
  *
@@ -70,9 +70,9 @@ test.describe('PDP mobile gallery image budget', () => {
     await expect(page.locator('body')).toBeVisible();
   });
 
-  // Title keeps "pinch-zoom decode budget" so CI can grep this test out of the
-  // green gate. Caps are the real long-term gate, not a skip.
-  test('KNOWN LIVE DEFECT until theme pinch-zoom publishes: gallery srcset stays under the pinch-zoom decode budget', async ({ page }) => {
+  // Title keeps "pinch-zoom must not decode" so CI can grep this test out of
+  // the green gate. Caps are the real long-term gate, not a skip.
+  test('pinch-zoom must not decode 2K–4K gallery/hero srcset (iOS tab-kill)', async ({ page }) => {
     const budget = await readGalleryBudget(page);
     expect(budget.thumbCount, JSON.stringify(budget)).toBeGreaterThan(0);
     // Closed lightbox must not be display:block — visibility:hidden still decodes.
