@@ -2,20 +2,14 @@ import { test, expect } from '@playwright/test';
 import { fastVisit } from '../helpers/test-utils';
 
 /**
- * Live PDP image budget — 2026-08-13 Chrome/Safari iOS tab kill.
+ * Live PDP image budget — pinch-zoom must not decode 2K–4K gallery/hero srcset.
  *
- * Pinch-zoom on Essentials Pro decoded 2K–4K gallery/lightbox candidates
- * (closed lightbox was still painted). This does not replace the theme fix.
- *
- * Split on purpose so the revived Playwright suite is not a dead red main:
- * - `Essentials Pro gallery is on the page` is a hard pass in the green gate.
- * - The srcset caps below are fail-closed (1445 / 1426 / 1445). Production
- *   still serves hero 1946w until the theme pinch-zoom fix publishes, so the
- *   assertion is expected red. CI runs it as a named step after the green
- *   gate with continue-on-error. Tagged `@fail-closed-until-theme` so the
- *   gate invert does not mention pinch-zoom. Do not skip it and do not
- *   silent `test.fail()` — when the theme ships, that step goes green and
- *   the tag split should be removed.
+ * Caps are fail-closed (thumbs 1426, hero/lightbox 1445). Production still
+ * serves hero 1946w until the theme fix publishes, so the assertion is
+ * expected red. CI runs this after the green gate with continue-on-error.
+ * Tagged `@fail-closed-until-theme` so the gate does not include it. Do not
+ * skip; do not silent `test.fail()`. When the theme ships, fold the step
+ * back into the gate.
  *
  * Live probe 2026-08-13:
  *   {"thumbCount":18,"thumbMax":416,"heroMax":1946,"lightboxMax":0,"lightboxDisplay":"none"}

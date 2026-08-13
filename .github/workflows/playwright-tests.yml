@@ -73,10 +73,8 @@ jobs:
           
           🔗 View: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-      # Known live defect until the theme pinch-zoom fix publishes (prod hero
-      # 1946w vs cap 1445w, probe 2026-08-13). Hard assertion, not a skip.
-      # Sequential after the gate so we do not double-install or double-hit Shopify.
-      # continue-on-error keeps this from poisoning the green-gate check.
+      # Fail-closed until live hero srcset ≤1445. continue-on-error until the
+      # theme ships (prod still 1946w). Runs after the green gate.
       - name: Run pinch-zoom PDP image budget
         if: success()
         continue-on-error: true
