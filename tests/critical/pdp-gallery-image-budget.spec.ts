@@ -11,10 +11,11 @@ import { fastVisit } from '../helpers/test-utils';
  * - `Essentials Pro gallery is on the page` is a hard pass in the green gate.
  * - The srcset caps below are fail-closed (1445 / 1426 / 1445). Production
  *   still serves hero 1946w until the theme pinch-zoom fix publishes, so the
- *   assertion is expected red. CI runs it after the green gate with
- *   continue-on-error (`--grep "pinch-zoom must not decode"`). Do not skip it
- *   and do not silent `test.fail()` — when the theme ships, that step goes
- *   green and the grep split should be removed.
+ *   assertion is expected red. CI runs it as a named step after the green
+ *   gate with continue-on-error. Tagged `@fail-closed-until-theme` so the
+ *   gate invert does not mention pinch-zoom. Do not skip it and do not
+ *   silent `test.fail()` — when the theme ships, that step goes green and
+ *   the tag split should be removed.
  *
  * Live probe 2026-08-13:
  *   {"thumbCount":18,"thumbMax":416,"heroMax":1946,"lightboxMax":0,"lightboxDisplay":"none"}
@@ -70,9 +71,10 @@ test.describe('PDP mobile gallery image budget', () => {
     await expect(page.locator('body')).toBeVisible();
   });
 
-  // Title keeps "pinch-zoom must not decode" so CI can grep this test out of
-  // the green gate. Caps are the real long-term gate, not a skip.
-  test('pinch-zoom must not decode 2K–4K gallery/hero srcset (iOS tab-kill)', async ({ page }) => {
+  // Tagged out of the green gate. Caps are the real long-term gate, not a skip.
+  test('pinch-zoom must not decode 2K–4K gallery/hero srcset (iOS tab-kill)', {
+    tag: '@fail-closed-until-theme',
+  }, async ({ page }) => {
     const budget = await readGalleryBudget(page);
     expect(budget.thumbCount, JSON.stringify(budget)).toBeGreaterThan(0);
     // Closed lightbox must not be display:block — visibility:hidden still decodes.

@@ -37,7 +37,7 @@ jobs:
 
       - name: Run Playwright green gate
         id: gate
-        run: npx playwright test --project=chromium --grep-invert "pinch-zoom must not decode"
+        run: npx playwright test --project=chromium --grep-invert "@fail-closed-until-theme"
         env:
           CI: true
           SHOPIFY_SIGNATURE: ${{ secrets.SHOPIFY_SIGNATURE }}
@@ -77,10 +77,10 @@ jobs:
       # 1946w vs cap 1445w, probe 2026-08-13). Hard assertion, not a skip.
       # Sequential after the gate so we do not double-install or double-hit Shopify.
       # continue-on-error keeps this from poisoning the green-gate check.
-      - name: Known-live pinch-zoom budget (expected red until theme ships)
+      - name: Run pinch-zoom PDP image budget
         if: success()
         continue-on-error: true
-        run: npx playwright test --project=chromium --grep "pinch-zoom must not decode"
+        run: npx playwright test --project=chromium tests/critical/pdp-gallery-image-budget.spec.ts -g "pinch-zoom"
         env:
           CI: true
           SHOPIFY_SIGNATURE: ${{ secrets.SHOPIFY_SIGNATURE }}
